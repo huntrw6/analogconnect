@@ -97,13 +97,13 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 - `AT+CHLD=?` → `+CHLD: (0,1,1x...)` → OK
 - `AT+CLIP=1` → OK
 
-`VERIFIED_AUTOMATED`: `/Profile/HFPHF/NewConnection` is **NOT invoked** by BlueZ
+`INCONCLUSIVE`: `/Profile/HFPHF/NewConnection` — previous monitor used wrong D-Bus path (`/org/bluez/Profile/HFPHF` instead of `/Profile/HFPHF`). Corrected trace pending.
 `VERIFIED_AUTOMATED`: `headset-head-unit` does not appear in EnumProfile after connection
 `VERIFIED_AUTOMATED`: No HFP transport or SCO objects created
 
-### Failure Layer
+### Failure Layer (corrected)
 
-`PIPEWIRE_PROFILE_ENUMERATION` — HFP connection is fully established at the RFCOMM level with successful AT command negotiation. But BlueZ does not invoke `/Profile/HFPHF/NewConnection` to deliver the connection to WirePlumber. The root cause is that BlueZ does not match the incoming HFP AG connection to WirePlumber's registered `/Profile/HFPHF`.
+Previous classification `BLUEZ_PROFILE_MATCHING_FAILURE` revised to `PROFILE_CALLBACK_MONITOR_INCONCLUSIVE`. The previous D-Bus monitor filtered on path `/org/bluez/Profile/HFPHF` which differs from the registered path `/Profile/HFPHF`. The callback may have occurred but was not observed. HFP RFCOMM connection and AT negotiation succeeded — this strongly suggests a local HF implementation handled the connection. Corrected trace pending.
 
 ### Previous Configuration Issues (resolved)
 
@@ -117,7 +117,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 1. ~~iPhone not trusted~~ — RESOLVED
 2. ~~obexd not installed~~ — imsg uses own OBEX, works fine
 3. ~~Bluetooth group~~ — active in current session
-4. **HFP BlueZ profile matching** — BlueZ does not route incoming HFP RFCOMM connection to WirePlumber's registered `/Profile/HFPHF` despite successful AT negotiation
+4. **HFP callback monitor inconclusive** — previous D-Bus monitor used wrong object path; corrected trace pending
 
 ## Key Findings
 
@@ -134,5 +134,6 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 11. `override.bluez5.roles = [ hfp_hf ]` had no effect on EnumProfile
 12. Explicit `ConnectProfile(111f)` succeeds — HFP RFCOMM connection established
 13. HFP AT negotiation completes successfully — all commands return OK
-14. BlueZ does not invoke `/Profile/HFPHF/NewConnection` — WirePlumber never receives the connection
-15. MAP and PBAP remain functional after HFP connection attempt
+14. Previous HFP callback monitor used wrong D-Bus path — result inconclusive
+15. HFP RFCOMM and AT negotiation succeed — some HF implementation is working
+16. MAP and PBAP remain functional after HFP connection attempt
