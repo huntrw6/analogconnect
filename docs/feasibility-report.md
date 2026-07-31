@@ -84,9 +84,26 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 - Active profile: `audio-gateway`
 - `bluez5.auto-connect`: `[ hfp_hf hsp_hs a2dp_sink hfp_ag hsp_ag a2dp_source ]`
 
+### HFP ConnectProfile Test Results
+
+`VERIFIED_AUTOMATED`: BlueZ `ConnectProfile(0000111f)` succeeds — "Connection successful"
+`VERIFIED_AUTOMATED`: RFCOMM connection established — btmon confirms SABM/UA frames
+`VERIFIED_AUTOMATED`: HFP AT negotiation completes successfully:
+- `AT+BRSF=695` → `+BRSF:4079` → OK
+- `AT+BAC=1,2,3` → OK (codec negotiation)
+- `AT+CIND=?` → OK (indicator mapping)
+- `AT+CIND?` → `+CIND: 1,0,0,3` → OK
+- `AT+CMER=3,0,0,1` → OK
+- `AT+CHLD=?` → `+CHLD: (0,1,1x...)` → OK
+- `AT+CLIP=1` → OK
+
+`VERIFIED_AUTOMATED`: `/Profile/HFPHF/NewConnection` is **NOT invoked** by BlueZ
+`VERIFIED_AUTOMATED`: `headset-head-unit` does not appear in EnumProfile after connection
+`VERIFIED_AUTOMATED`: No HFP transport or SCO objects created
+
 ### Failure Layer
 
-`PIPEWIRE_PROFILE_ENUMERATION` — iPhone advertises HFP AG UUID `111f`, service discovery is complete, local `111e` is registered, but PipeWire does not expose `headset-head-unit`. The spa-bluez5 library has the profile name compiled in but does not create the EnumProfile entry.
+`PIPEWIRE_PROFILE_ENUMERATION` — HFP connection is fully established at the RFCOMM level with successful AT command negotiation. But BlueZ does not invoke `/Profile/HFPHF/NewConnection` to deliver the connection to WirePlumber. The root cause is that BlueZ does not match the incoming HFP AG connection to WirePlumber's registered `/Profile/HFPHF`.
 
 ### Previous Configuration Issues (resolved)
 
@@ -100,7 +117,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 1. ~~iPhone not trusted~~ — RESOLVED
 2. ~~obexd not installed~~ — imsg uses own OBEX, works fine
 3. ~~Bluetooth group~~ — active in current session
-4. **HFP profile enumeration** — `headset-head-unit` not exposed by PipeWire 1.4.2 despite successful BlueZ registration
+4. **HFP BlueZ profile matching** — BlueZ does not route incoming HFP RFCOMM connection to WirePlumber's registered `/Profile/HFPHF` despite successful AT negotiation
 
 ## Key Findings
 
@@ -115,3 +132,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 9. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG)
 10. Custom WirePlumber config fragments with quoted-string `bluez5.roles` are rejected
 11. `override.bluez5.roles = [ hfp_hf ]` had no effect on EnumProfile
+12. Explicit `ConnectProfile(111f)` succeeds — HFP RFCOMM connection established
+13. HFP AT negotiation completes successfully — all commands return OK
+14. BlueZ does not invoke `/Profile/HFPHF/NewConnection` — WirePlumber never receives the connection
+15. MAP and PBAP remain functional after HFP connection attempt

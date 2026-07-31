@@ -4,27 +4,27 @@
 Milestone 0
 
 ## Current phase
-Phase 4 — HFP registration analysis (completed)
+Phase 5 — HFP ConnectProfile test (completed)
 
 ## Current objective
-Trace PipeWire profile construction to understand why `headset-head-unit` is not exposed
+Investigate BlueZ profile matching for HFP — determine why BlueZ does not route incoming HFP RFCOMM connection to WirePlumber's registered `/Profile/HFPHF`
 
 ## Last completed action
-Inspected iPhone remote HFP services. Confirmed remote `111f` present, `ServicesResolved: true`, local `111e` registered, but PipeWire EnumProfile only exposes `audio-gateway`. Cleaned up all invalid configuration fragments. Verified MAP and PBAP still work.
+Executed explicit `ConnectProfile(0000111f)` to iPhone. HFP RFCOMM connection established and AT negotiation completed successfully. But BlueZ did not invoke `/Profile/HFPHF/NewConnection` — WirePlumber never received the connection.
 
 ## Evidence
-- `VERIFIED_AUTOMATED`: WirePlumber native backend registered local HFP HF UUID `0000111e`
-- `VERIFIED_AUTOMATED`: WirePlumber native backend registered local HFP AG UUID `0000111f`
-- `VERIFIED_AUTOMATED`: PipeWire exposes `audio-gateway` (Pi-as-AG role)
-- `VERIFIED_AUTOMATED`: PipeWire does NOT expose `headset-head-unit`
-- `VERIFIED_HARDWARE`: iPhone advertises HFP AG UUID `0000111f`
-- `VERIFIED_HARDWARE`: `ServicesResolved: true`
-- `VERIFIED_HARDWARE`: MAP works with paired iPhone
-- `VERIFIED_HARDWARE`: PBAP works with paired iPhone
+- `VERIFIED_AUTOMATED`: BlueZ `ConnectProfile(111f)` succeeds
+- `VERIFIED_AUTOMATED`: RFCOMM connection established (btmon SABM/UA frames)
+- `VERIFIED_AUTOMATED`: HFP AT negotiation completes — all commands return OK
+- `VERIFIED_AUTOMATED`: `/Profile/HFPHF/NewConnection` NOT invoked by BlueZ
+- `VERIFIED_AUTOMATED`: `headset-head-unit` absent from EnumProfile
+- `VERIFIED_AUTOMATED`: No HFP transport or SCO objects created
+- `VERIFIED_HARDWARE`: MAP works after HFP connection
+- `VERIFIED_HARDWARE`: PBAP works after HFP connection
 
 ## Current blockers
-- `headset-head-unit` profile not in PipeWire EnumProfile despite successful BlueZ registration
-- Failure layer: PIPEWIRE_PROFILE_ENUMERATION
+- BlueZ does not route HFP connection to WirePlumber's registered `/Profile/HFPHF`
+- Root cause: BlueZ profile matching issue, not PipeWire enumeration
 
 ## Approved system changes
 - Disabled three custom WirePlumber config fragments (renamed to .disabled)
@@ -34,7 +34,7 @@ Inspected iPhone remote HFP services. Confirmed remote `111f` present, `Services
 - None
 
 ## Next action
-Trace PipeWire profile construction — investigate why spa-bluez5 in PipeWire 1.4.2 does not create `headset-head-unit` EnumProfile entry for device advertising HFP AG UUID `111f`
+Investigate BlueZ profile matching — examine why BlueZ does not match incoming HFP AG connection to WirePlumber's `/Profile/HFPHF`. May require checking BlueZ `profile.c` source or registration parameters.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
@@ -42,13 +42,17 @@ Trace PipeWire profile construction — investigate why spa-bluez5 in PipeWire 1
 - MH-PBAP-001: PASS (PBAP listing working)
 - HFP D-Bus registration trace: PASS (both HF and AG registered)
 - iPhone service discovery: PASS (`111f` present, `ServicesResolved: true`)
+- HFP ConnectProfile: PASS (RFCOMM established, AT negotiation successful)
+- HFP NewConnection callback: FAIL (BlueZ did not invoke)
 
 ## Important decisions
 - imsg works without bluez-obexd — uses own OBEX implementation
 - iOS requires manual permission grant before first MAP/PBAP connection
 - Re-pairing not justified — remote UUIDs are correct, service discovery complete
 - Custom config fragments with quoted-string `bluez5.roles` are invalid syntax
+- HFP failure is in BlueZ profile matching, not PipeWire profile enumeration
 
 ## Unresolved questions
-- Why does spa-bluez5 not create `headset-head-unit` EnumProfile despite compiling the profile name?
-- Is `audio-gateway` profile sufficient for HFP call control on this PipeWire version?
+- Why does BlueZ not match incoming HFP AG connection to WirePlumber's `/Profile/HFPHF`?
+- Are the registration parameters (Features, Version) correct for HFP HF profile?
+- Does BlueZ need different profile registration to accept incoming HFP connections?
