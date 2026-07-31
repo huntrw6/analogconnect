@@ -53,11 +53,54 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 | PBAP UUID | advertised |
 | HFP UUID | advertised |
 
+## HFP Registration Analysis
+
+### Remote iPhone UUIDs (from BlueZ Device1)
+
+| UUID | Service | Status |
+|------|---------|--------|
+| `0000111f` | HFP Audio Gateway | present |
+| `0000111e` | HFP Hands-Free | absent (expected — iPhone is not a headset) |
+| `00001108` | HSP Headset | absent |
+| `00001112` | HSP Audio Gateway | absent |
+| `00001132` | MAP | present |
+| `0000112f` | PBAP | present |
+
+- `ServicesResolved`: true
+- Device form factor: phone
+- Bluetooth class: `0x007a020c`
+
+### Local Pi Registration (from D-Bus trace)
+
+- Local HFP HF (`0000111e`) registered at `/Profile/HFPHF` — `VERIFIED_AUTOMATED`
+- Local HFP AG (`0000111f`) registered at `/Profile/HFPAG` — `VERIFIED_AUTOMATED`
+- Both profiles accepted by BlueZ with no errors
+
+### PipeWire Profile Enumeration
+
+- `headset-head-unit`: **absent** from EnumProfile
+- `headset-audio-gateway`: **absent** from EnumProfile
+- `audio-gateway`: present (description: "Audio Gateway (A2DP Source & HSP/HFP AG)")
+- Active profile: `audio-gateway`
+- `bluez5.auto-connect`: `[ hfp_hf hsp_hs a2dp_sink hfp_ag hsp_ag a2dp_source ]`
+
+### Failure Layer
+
+`PIPEWIRE_PROFILE_ENUMERATION` — iPhone advertises HFP AG UUID `111f`, service discovery is complete, local `111e` is registered, but PipeWire does not expose `headset-head-unit`. The spa-bluez5 library has the profile name compiled in but does not create the EnumProfile entry.
+
+### Previous Configuration Issues (resolved)
+
+- `~/.config/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf.disabled` — quoted-string `bluez5.roles` syntax
+- `~/.config/wireplumber/main.lua.d/51-bluez-hfp.lua.disabled` — WirePlumber 0.4 Lua format
+- `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf.disabled` — quoted-string `bluez5.roles` syntax
+- `~/.config/wireplumber/wireplumber.conf.d/90-analogconnect-hfp-test.conf` — removed
+
 ## Blockers
 
 1. ~~iPhone not trusted~~ — RESOLVED
 2. ~~obexd not installed~~ — imsg uses own OBEX, works fine
-3. **Bluetooth group** — not active in current session (requires re-login)
+3. ~~Bluetooth group~~ — active in current session
+4. **HFP profile enumeration** — `headset-head-unit` not exposed by PipeWire 1.4.2 despite successful BlueZ registration
 
 ## Key Findings
 
@@ -67,3 +110,8 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 4. iOS permission prompt appears after first connection attempt
 5. imsg connects via its own OBEX implementation (bluer crate)
 6. MAP channel: RFCOMM 2, PBAP channel: RFCOMM 13
+7. iPhone advertises HFP AG (`111f`) — correct for Pi acting as hands-free
+8. WirePlumber native backend registers both HF and AG with BlueZ — `VERIFIED_AUTOMATED`
+9. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG)
+10. Custom WirePlumber config fragments with quoted-string `bluez5.roles` are rejected
+11. `override.bluez5.roles = [ hfp_hf ]` had no effect on EnumProfile
