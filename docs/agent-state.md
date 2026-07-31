@@ -4,46 +4,43 @@
 Milestone 0
 
 ## Current phase
-Phase 0C — Diagnostic scripts (completed)
+Phase 0D — Upstream research (completed)
 
 ## Current objective
-Document upstream research; prepare for Phase 0D
+Begin Phase 0E — feasibility harness design
 
 ## Last completed action
-Created and tested three diagnostic scripts: doctor.sh, inspect-device.sh, collect-logs.sh — all 31 tests passing
+Completed research on BlueZ, PipeWire, WirePlumber, gnufood/imsg, and oFono. Documented findings in research-sources.md.
 
 ## Evidence
-- `VERIFIED_AUTOMATED`: doctor.sh — read-only system health check, 13 system checks, JSON output
-- `VERIFIED_AUTOMATED`: inspect-device.sh — Bluetooth device profile inspector, MAC validation
-- `VERIFIED_AUTOMATED`: collect-logs.sh — privacy-safe log collector with manifest generation
-- `VERIFIED_AUTOMATED`: 31/31 tests passing in test-diagnostics.sh
-- `VERIFIED_AUTOMATED`: doctor.sh produces valid JSON output
-- `VERIFIED_AUTOMATED`: collect-logs.sh collects 9 diagnostic files by default
+- `DOCUMENTED`: BlueZ 5.87 supports MAP client, PBAP client, HFP via oFono
+- `DOCUMENTED`: PipeWire 1.4.2 supports bidirectional SCO audio, HFP HF role
+- `VERIFIED_AUTOMATED`: gnufood/imsg v0.3.1 — full MAP + PBAP client, no HFP
+- `DOCUMENTED`: oFono works but requires modem emulator — fallback only
+- `INFERRED`: Integration of imsg (MAP/PBAP) + PipeWire (HFP/SCO) is feasible
 
 ## Current blockers
-- ShellCheck not installed (cannot lint scripts)
-- Rust/Cargo not installed (may be needed for some build dependencies)
-- CMake not installed (may be needed for some build dependencies)
+- ShellCheck not installed
+- Rust/Cargo not installed (needed for imsg build)
 
 ## Approved system changes
-- None (read-only scripts only)
+- None (read-only so far)
 
 ## Pending user actions
-- Approval needed for package installations in Phase 0D
+- Approval needed for package installations
 
 ## Next action
-Begin Phase 0D — focused upstream research (BlueZ, PipeWire, imsg, oFono)
+Begin Phase 0E — feasibility harness design
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 
 ## Important decisions
-- Use MIT license for original AnalogConnect code
-- Repository initialized on `main` branch
-- Doctor script exits 0 (pass), 1 (fail), 2 (warn/blocked), 64 (usage error)
-- All scripts redact Bluetooth addresses by default
-- collect-logs.sh requires --include-sensitive for paired device names
+- Use imsg for MAP and PBAP client functionality
+- Use PipeWire for HFP call control and SCO audio
+- oFono is fallback only — not primary approach
+- Integration layer needed to coordinate imsg + PipeWire
 
 ## Unresolved questions
-- Are MAP/PBAP client profiles available on BlueZ 5.82 with this controller?
-- Will SCO audio route through PipeWire without additional configuration?
+- Can PipeWire telephony API replace oFono for HFP control?
+- How to coordinate imsg daemon with PipeWire audio session?
