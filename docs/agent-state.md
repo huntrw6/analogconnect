@@ -4,43 +4,44 @@
 Milestone 0
 
 ## Current phase
-Phase 0D — Upstream research (completed)
+Phase 0E — Feasibility harness design (completed)
 
 ## Current objective
-Begin Phase 0E — feasibility harness design
+Begin Phase 0F — manual test plan
 
 ## Last completed action
-Completed research on BlueZ, PipeWire, WirePlumber, gnufood/imsg, and oFono. Documented findings in research-sources.md.
+Created analogconnect CLI harness with 9 subcommands. status, adapters, devices, inspect-device, collect-logs implemented. test-map/test-pbap/test-hfp/test-sco show BLOCKED with prerequisites.
 
 ## Evidence
-- `DOCUMENTED`: BlueZ 5.87 supports MAP client, PBAP client, HFP via oFono
-- `DOCUMENTED`: PipeWire 1.4.2 supports bidirectional SCO audio, HFP HF role
-- `VERIFIED_AUTOMATED`: gnufood/imsg v0.3.1 — full MAP + PBAP client, no HFP
-- `DOCUMENTED`: oFono works but requires modem emulator — fallback only
-- `INFERRED`: Integration of imsg (MAP/PBAP) + PipeWire (HFP/SCO) is feasible
+- `VERIFIED_AUTOMATED`: bin/analogconnect dispatches to sub-commands correctly
+- `VERIFIED_AUTOMATED`: status, adapters, devices, inspect-device, collect-logs all functional
+- `VERIFIED_AUTOMATED`: test-map/pbap/hfp/sco return BLOCKED with clear prerequisites
+- `VERIFIED_AUTOMATED`: JSON output works for status and adapters commands
 
 ## Current blockers
+- No paired devices available for profile testing
 - ShellCheck not installed
-- Rust/Cargo not installed (needed for imsg build)
+- Rust/Cargo not installed (needed for imsg)
 
 ## Approved system changes
-- None (read-only so far)
+- None (read-only scripts only)
 
 ## Pending user actions
 - Approval needed for package installations
+- User must pair iPhone for hardware tests
 
 ## Next action
-Begin Phase 0E — feasibility harness design
+Begin Phase 0F — manual test plan
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
+- bin/analogconnect: all subcommands functional
 
 ## Important decisions
-- Use imsg for MAP and PBAP client functionality
-- Use PipeWire for HFP call control and SCO audio
-- oFono is fallback only — not primary approach
-- Integration layer needed to coordinate imsg + PipeWire
+- Use bin/analogconnect as main entry point
+- Thin shell wrappers around existing scripts
+- Test commands show BLOCKED with clear prerequisites until hardware available
+- Privacy: addresses redacted by default
 
 ## Unresolved questions
-- Can PipeWire telephony API replace oFono for HFP control?
 - How to coordinate imsg daemon with PipeWire audio session?

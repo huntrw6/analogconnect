@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# AnalogConnect — Feasibility Test Harness
+# Minimal command-line interface for Milestone 0 testing.
+
+VERSION="0.1.0"
+SCRIPT_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
+
+usage() {
+    cat <<EOF
+AnalogConnect $VERSION — Bluetooth Feasibility Test Harness
+
+Usage: $(basename "$0") <command> [options]
+
+Commands:
+  status              System readiness check
+  adapters            List Bluetooth adapters
+  devices             List paired Bluetooth devices
+  inspect-device      Inspect device profiles
+  test-map            Test MAP (message access) — requires hardware
+  test-pbap           Test PBAP (phonebook access) — requires hardware
+  test-hfp            Test HFP (hands-free) — requires hardware
+  test-sco            Test SCO audio — requires hardware
+  collect-logs        Collect diagnostic logs
+
+Options:
+  --device <MAC>      Bluetooth device address (for inspect/test commands)
+  --json              Output as JSON
+  --no-redact         Do not redact addresses
+  --include-sensitive Include sensitive data in logs
+  --version           Show version
+  --help              Show this help
+
+Result states:
+  PASS                Capability verified
+  FAIL                Capability detected but not working
+  BLOCKED             Cannot test without hardware
+  NOT_SUPPORTED       Device does not support this capability
+  NOT_CONFIGURED      Component not configured
+  USER_ACTION_REQUIRED User must act on iPhone
+EOF
+}
+
+redact_addr() {
+    sed -E 's/([0-9A-Fa-f]{2}:){2}[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){3}/XX:XX:XX:XX:XX:XX/g'
+}
+
+cmd_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# --- Subcommands ---
+
+cmd_status() {
+    exec "$SCRIPT_DIR/doctor.sh" "$@"
+}
+
+cmd_adapters() {
+    local json=false
+    local args=()
+    for arg in "$@"; do
+        case "$arg" in
+            --json) json=true; args+=("$arg") ;;
+            *) args+=("$arg") ;;
+        esac
+    done
+
+    if ! cmd_exists bluetoothctl; then
+        echo "Error: bluetoothctl not found" >&2
+        return 1
+    fi
+
+    if [[ "$json" == true ]]; then
+        echo '{'
+        echo '  "adapters": ['
+        bluetoothctl show 2>/dev/null | redact_addr | while IFS= read -r line; do
+            if echo "$line" | grep -q "Controller"; then
+                ADDR=$(echo "$line" | awk '{print $2}')
+                NAME=$(echo "$line" | awk '{print $NF}')
+                printf '    {"address":%q,"name":%q}\n' "$ADDR" "$NAME"
+            fi
+        done
+        echo '  ]'
+        echo '}'
+    else
+        echo "Bluetooth Adapters:"
+        echo ""
+        bluetoothctl show 2>/dev/null | redact_addr | grep -E "Controller|Name|Powered|Pairable" | sed 's/^/  /'
+    fi
+}
+
+cmd_devices() {
+    local json=false
+    for arg in "$@"; do
+        case "$arg" in
+            --json) json=true ;;
+        esac
+    done
+
+    if ! cmd_exists busctl; then
+        echo "Error: busctl not found" >&2
+        return 1
+    fi
+
+    # Get managed objects and extract device info via D-Bus
+    local DEVICES
+    DEVICES=$(busctl call org.bluez / org.freedesktop.DBus.ObjectManager GetManagedObjects 2>/dev/null || echo "")
+
+    if [[ -z "$DEVICES" ]]; then
+        echo "Error: Could not query BlueZ" >&2
+        return 1
+    fi
+
+    # Extract device paths and info
+    local DEVICE_COUNT=0
+    local DEVICE_OUTPUT=""
+
+    # Use bluetoothctl to get paired devices list
+    if cmd_exists bluetoothctl; then
+        DEVICE_OUTPUT=$(echo -e "paired-devices\nquit" | bluetoothctl 2>/dev/null | grep -E "^Device" || true)
+    fi
+
+    DEVICE_COUNT=$(echo "$DEVICE_OUTPUT" | grep -c "^Device" 2>/dev/null || echo "0")
+    DEVICE_COUNT=$(echo "$DEVICE_COUNT" | tr -d '[:space:]')
+
+    if [[ "$json" == true ]]; then
+        echo '{'
+        echo '  "devices": ['
+        if [[ "$DEVICE_COUNT" -gt 0 ]]; then
+            echo "$DEVICE_OUTPUT" | redact_addr | while IFS= read -r line; do
+                ADDR=$(echo "$line" | awk '{print $2}')
+                NAME=$(echo "$line" | cut -d' ' -f3-)
+                printf '    {"address":%q,"name":%q}\n' "$ADDR" "$NAME"
+            done
+        fi
+        echo '  ]'
+        echo '}'
+    else
+        if [[ "$DEVICE_COUNT" -eq 0 ]]; then
+            echo "No paired devices found."
+            echo ""
+            echo "To pair a device:"
+            echo "  1. Put your iPhone in Bluetooth discoverable mode"
+            echo "  2. Run: bluetoothctl"
+            echo "  3. Run: scan on"
+            echo "  4. Run: pair <device-address>"
+            echo "  5. Run: trust <device-address>"
+            echo "  6. Run: quit"
+        else
+            echo "Paired Devices:"
+            echo ""
+            echo "$DEVICE_OUTPUT" | redact_addr | sed 's/^Device /  /'
+            echo ""
+            echo "Use 'analogconnect inspect-device --device <MAC>' to check profiles."
+        fi
+    fi
+}
+
+cmd_inspect_device() {
+    exec "$SCRIPT_DIR/inspect-device.sh" "$@"
+}
+
+cmd_collect_logs() {
+    exec "$SCRIPT_DIR/collect-logs.sh" "$@"
+}
+
+cmd_test_map() {
+    echo "BLOCKED  test-map requires imsg installation and paired iPhone"
+    echo ""
+    echo "Prerequisites:"
+    echo "  1. Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo "  2. Install imsg: cargo install imsg"
+    echo "  3. Pair iPhone via bluetoothctl"
+    echo "  4. Run: imsg daemon start"
+    echo "  5. Run: imsg list"
+}
+
+cmd_test_pbap() {
+    echo "BLOCKED  test-pbap requires imsg installation and paired iPhone"
+    echo ""
+    echo "Prerequisites:"
+    echo "  1. Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo "  2. Install imsg: cargo install imsg"
+    echo "  3. Pair iPhone via bluetoothctl"
+    echo "  4. Run: imsg contacts"
+}
+
+cmd_test_hfp() {
+    echo "BLOCKED  test-hfp requires paired iPhone and phone call test"
+    echo ""
+    echo "Prerequisites:"
+    echo "  1. Pair iPhone via bluetoothctl"
+    echo "  2. Configure PipeWire for HFP HF role"
+    echo "  3. Make a test call from another phone"
+    echo "  4. Verify audio routes through PipeWire"
+}
+
+cmd_test_sco() {
+    echo "BLOCKED  test-sco requires active HFP call and audio routing"
+    echo ""
+    echo "Prerequisites:"
+    echo "  1. Complete HFP test first"
+    echo "  2. Verify bidirectional audio during call"
+    echo "  3. Check PipeWire SCO source/sink nodes"
+}
+
+# --- Main ---
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 0
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    status) cmd_status "$@" ;;
+    adapters) cmd_adapters "$@" ;;
+    devices) cmd_devices "$@" ;;
+    inspect-device) cmd_inspect_device "$@" ;;
+    test-map) cmd_test_map "$@" ;;
+    test-pbap) cmd_test_pbap "$@" ;;
+    test-hfp) cmd_test_hfp "$@" ;;
+    test-sco) cmd_test_sco "$@" ;;
+    collect-logs) cmd_collect_logs "$@" ;;
+    --version|-v) echo "analogconnect $VERSION" ;;
+    --help|-h) usage ;;
+    *) echo "Unknown command: $COMMAND" >&2; usage >&2; exit 64 ;;
+esac
