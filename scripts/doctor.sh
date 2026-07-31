@@ -307,7 +307,7 @@ else
 fi
 
 if cmd_exists wpctl; then
-    PW_STATUS=$(wpctl status 2>/dev/null | head -1 || echo "unknown")
+    wpctl status >/dev/null 2>&1
     section_item
     check_pass "wpctl" "available"
 else

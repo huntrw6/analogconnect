@@ -5,8 +5,6 @@ set -uo pipefail
 # Fixture-based tests for doctor.sh, inspect-device.sh, collect-logs.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-TESTS_DIR="$SCRIPT_DIR/tests"
-RESULTS_DIR="$SCRIPT_DIR/test-results"
 
 PASS_COUNT=0
 FAIL_COUNT=0

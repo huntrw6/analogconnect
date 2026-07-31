@@ -94,14 +94,15 @@ Note: MAP and PBAP client roles may only appear after BlueZ profile plugins are 
 - PipeWire 1.4.2 with WirePlumber 0.5.8
 - GCC, Meson, Ninja, pkg-config for building C projects
 - Python 3 for scripting
+- ShellCheck 0.10.0 for script linting
+- Rust 1.97.1 / Cargo 1.97.1 for building Rust projects
+- imsg 0.3.1 for MAP/PBAP Bluetooth client
+- User in `bluetooth` group for non-root access
 
-### Missing / Needs Installation
+### Not Installed
 
-- ShellCheck (for script linting — needed for Phase 0C)
-- Rust/Cargo (may be needed for some build dependencies)
 - CMake (may be needed for some build dependencies)
 - `pactl` (for PulseAudio compatibility queries)
-- Possibly `bluetooth` group membership for non-root operations
 
 ### Needs Investigation
 

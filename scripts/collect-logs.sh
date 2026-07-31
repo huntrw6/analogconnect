@@ -77,8 +77,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Setup output directory ---
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 if [[ -z "$OUTPUT_DIR" ]]; then
-    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     OUTPUT_DIR="test-results/${TIMESTAMP}"
 fi
 
@@ -156,7 +156,7 @@ fi
 if [[ "$JSON" == true ]]; then
     echo '{'
     echo '  "version": "'"$VERSION"'",'
-    echo '  "timestamp": "'$(date -Iseconds)'",'
+    echo '  "timestamp": "'"$TIMESTAMP"'",'
     echo '  "output_dir": "'"$OUTPUT_DIR"'",'
     echo '  "include_sensitive": '$INCLUDE_SENSITIVE','
     echo '  "items": ['

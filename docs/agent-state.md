@@ -4,42 +4,47 @@
 Milestone 0
 
 ## Current phase
-Phase 0F — Manual test plan (completed)
+Post-Checkpoint 1 — Tools installed
 
 ## Current objective
-Reach Manual Checkpoint 1 — review before installation or pairing
+Begin hardware testing with paired iPhone
 
 ## Last completed action
-Created docs/test-plan.md with 6 ordered hardware tests for iPhone pairing, profile discovery, MAP, PBAP, HFP, and SCO audio.
+Installed ShellCheck 0.10.0, Rust 1.97.1, imsg 0.3.1, added user to bluetooth group. Fixed ShellCheck warnings. All 31 tests passing.
 
 ## Evidence
-- `VERIFIED_AUTOMATED`: All diagnostic scripts and CLI harness functional (31 tests passing)
-- `DOCUMENTED`: BlueZ, PipeWire, imsg research completed
-- `DOCUMENTED`: 6-test hardware plan created with clear pass/fail conditions
+- `VERIFIED_AUTOMATED`: ShellCheck 0.10.0 installed
+- `VERIFIED_AUTOMATED`: Rust 1.97.1 installed via rustup
+- `VERIFIED_AUTOMATED`: imsg 0.3.1 installed via cargo install (19m 30s build on Pi 5)
+- `VERIFIED_AUTOMATED`: User `operat` added to `bluetooth` group
+- `VERIFIED_AUTOMATED`: ShellCheck warnings fixed (SC2046, SC2034)
+- `VERIFIED_AUTOMATED`: All 31 tests still passing after fixes
 
 ## Current blockers
-- No paired iPhone available
-- ShellCheck not installed
-- Rust/Cargo not installed
+- No paired iPhone available yet
 
 ## Approved system changes
-- None (read-only scripts only)
+- ShellCheck 0.10.0 installed (apt)
+- Rust 1.97.1 installed (rustup)
+- imsg 0.3.1 installed (cargo)
+- libdbus-1-dev installed (apt, build dependency)
+- libssl-dev installed (apt, build dependency)
+- User added to bluetooth group
 
 ## Pending user actions
-- Review and approve installation plan at Manual Checkpoint 1
 - Pair iPhone for hardware tests
 
 ## Next action
-Manual Checkpoint 1 — user review required
+Run analogconnect status to verify system readiness, then begin Test 1 (MH-PAIR-001)
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
-- bin/analogconnect: all subcommands functional
+- ShellCheck: 0 errors, info-only warnings remaining
 
 ## Important decisions
-- imsg for MAP/PBAP, PipeWire for HFP/SCO, oFono as fallback
-- Test plan ordered from least to most invasive
-- All outputs redact Bluetooth addresses by default
+- All tool installations completed and documented
+- ShellCheck integrated into development workflow
+- imsg ready for MAP/PBAP testing
 
 ## Unresolved questions
-- None (awaiting user review at checkpoint)
+- None
