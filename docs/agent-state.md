@@ -4,44 +4,42 @@
 Milestone 0
 
 ## Current phase
-Phase 0E — Feasibility harness design (completed)
+Phase 0F — Manual test plan (completed)
 
 ## Current objective
-Begin Phase 0F — manual test plan
+Reach Manual Checkpoint 1 — review before installation or pairing
 
 ## Last completed action
-Created analogconnect CLI harness with 9 subcommands. status, adapters, devices, inspect-device, collect-logs implemented. test-map/test-pbap/test-hfp/test-sco show BLOCKED with prerequisites.
+Created docs/test-plan.md with 6 ordered hardware tests for iPhone pairing, profile discovery, MAP, PBAP, HFP, and SCO audio.
 
 ## Evidence
-- `VERIFIED_AUTOMATED`: bin/analogconnect dispatches to sub-commands correctly
-- `VERIFIED_AUTOMATED`: status, adapters, devices, inspect-device, collect-logs all functional
-- `VERIFIED_AUTOMATED`: test-map/pbap/hfp/sco return BLOCKED with clear prerequisites
-- `VERIFIED_AUTOMATED`: JSON output works for status and adapters commands
+- `VERIFIED_AUTOMATED`: All diagnostic scripts and CLI harness functional (31 tests passing)
+- `DOCUMENTED`: BlueZ, PipeWire, imsg research completed
+- `DOCUMENTED`: 6-test hardware plan created with clear pass/fail conditions
 
 ## Current blockers
-- No paired devices available for profile testing
+- No paired iPhone available
 - ShellCheck not installed
-- Rust/Cargo not installed (needed for imsg)
+- Rust/Cargo not installed
 
 ## Approved system changes
 - None (read-only scripts only)
 
 ## Pending user actions
-- Approval needed for package installations
-- User must pair iPhone for hardware tests
+- Review and approve installation plan at Manual Checkpoint 1
+- Pair iPhone for hardware tests
 
 ## Next action
-Begin Phase 0F — manual test plan
+Manual Checkpoint 1 — user review required
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 - bin/analogconnect: all subcommands functional
 
 ## Important decisions
-- Use bin/analogconnect as main entry point
-- Thin shell wrappers around existing scripts
-- Test commands show BLOCKED with clear prerequisites until hardware available
-- Privacy: addresses redacted by default
+- imsg for MAP/PBAP, PipeWire for HFP/SCO, oFono as fallback
+- Test plan ordered from least to most invasive
+- All outputs redact Bluetooth addresses by default
 
 ## Unresolved questions
-- How to coordinate imsg daemon with PipeWire audio session?
+- None (awaiting user review at checkpoint)
