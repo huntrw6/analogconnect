@@ -4,47 +4,47 @@
 Milestone 0
 
 ## Current phase
-Post-Checkpoint 1 — Tools installed
+Phase 2 — Verify paired iPhone (completed)
 
 ## Current objective
-Begin hardware testing with paired iPhone
+Present Manual Checkpoint 2 — Paired iPhone Verified
 
 ## Last completed action
-Installed ShellCheck 0.10.0, Rust 1.97.1, imsg 0.3.1, added user to bluetooth group. Fixed ShellCheck warnings. All 31 tests passing.
+Verified paired iPhone profile discovery. Found iPhone with MAP, PBAP, HFP UUIDs advertised. iPhone is paired and connected but NOT trusted.
 
 ## Evidence
-- `VERIFIED_AUTOMATED`: ShellCheck 0.10.0 installed
-- `VERIFIED_AUTOMATED`: Rust 1.97.1 installed via rustup
-- `VERIFIED_AUTOMATED`: imsg 0.3.1 installed via cargo install (19m 30s build on Pi 5)
-- `VERIFIED_AUTOMATED`: User `operat` added to `bluetooth` group
-- `VERIFIED_AUTOMATED`: ShellCheck warnings fixed (SC2046, SC2034)
-- `VERIFIED_AUTOMATED`: All 31 tests still passing after fixes
+- `VERIFIED_HARDWARE`: iPhone paired as "illuminary-cinema" with icon: phone
+- `VERIFIED_HARDWARE`: Connected: yes, Paired: yes, Trusted: **no**
+- `VERIFIED_HARDWARE`: MAP Server UUID (0x1132) advertised
+- `VERIFIED_HARDWARE`: PBAP Server UUID (0x112f) advertised
+- `VERIFIED_HARDWARE`: HFP Audio Gateway UUID (0x111f) advertised
+- `VERIFIED_AUTOMATED`: imsg 0.3.1 installed and configured
+- `FAILED`: obexd not installed on system (imsg uses own OBEX)
+- `BLOCKED`: iPhone not trusted — MAP/PBAP access requires trust
 
 ## Current blockers
-- No paired iPhone available yet
+- iPhone not trusted — must run `bluetoothctl trust <address>`
+- imsg needs `config set-device <address>` before first use
+- Bluetooth group membership not active in this session
 
 ## Approved system changes
-- ShellCheck 0.10.0 installed (apt)
-- Rust 1.97.1 installed (rustup)
-- imsg 0.3.1 installed (cargo)
-- libdbus-1-dev installed (apt, build dependency)
-- libssl-dev installed (apt, build dependency)
-- User added to bluetooth group
+- None this session
 
 ## Pending user actions
-- Pair iPhone for hardware tests
+- Trust the iPhone via bluetoothctl
+- Confirm iPhone Bluetooth settings for contact/notification access
 
 ## Next action
-Run analogconnect status to verify system readiness, then begin Test 1 (MH-PAIR-001)
+Manual Checkpoint 2 — wait for user confirmation
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
-- ShellCheck: 0 errors, info-only warnings remaining
+- Profile discovery: completed
 
 ## Important decisions
-- All tool installations completed and documented
-- ShellCheck integrated into development workflow
-- imsg ready for MAP/PBAP testing
+- imsg implements its own OBEX client — does not require obexd
+- Must trust iPhone before MAP/PBAP access will work
 
 ## Unresolved questions
-- None
+- Will imsg work without obexd installed?
+- What iOS settings need to be enabled for MAP/PBAP?
