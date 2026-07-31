@@ -1,0 +1,33 @@
+# Build directories
+build/
+target/
+*.o
+*.so
+*.dylib
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test results (may contain sensitive data)
+test-results/*
+!test-results/.gitignore
+
+# Upstream cloned repos
+upstream/
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+
+# Pairing keys and personal data (never commit)
+*.key
+*.db
