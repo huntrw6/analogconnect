@@ -4,28 +4,36 @@
 Milestone 0
 
 ## Current phase
-Phase 0A — Repository Inspection
+Phase 0B — Read-only Raspberry Pi audit (completed)
 
 ## Current objective
-Inspect repository state and initialize project structure
+Document environment findings; prepare to begin Phase 0C
 
 ## Last completed action
-Initialized git repository, created directory structure, and base files (.gitignore, LICENSE, AGENTS.md, README.md)
+Completed full read-only audit of Raspberry Pi system — hardware, Bluetooth, audio, and development tools
 
 ## Evidence
-- `VERIFIED_AUTOMATED`: Repository was empty; fresh git init on master renamed to main
+- `VERIFIED_AUTOMATED`: Raspberry Pi 5 Model B, Debian 13 aarch64, 16GB RAM
+- `VERIFIED_AUTOMATED`: Bluetooth controller hci0 powered, BlueZ 5.82, not RF-killed
+- `VERIFIED_AUTOMATED`: PipeWire 1.4.2, WirePlumber 0.5.8 running
+- `VERIFIED_AUTOMATED`: GCC 14.2, Meson 1.7, Ninja 1.12, pkg-config 1.8 available
+- `UNKNOWN`: MAP/PBAP UUIDs not visible on controller — may need OBEX plugins or further configuration
+- `UNKNOWN`: No `bluetooth` group membership for user `operat`
 
 ## Current blockers
-- None
+- ShellCheck not installed (needed for Phase 0C script linting)
+- Rust/Cargo not installed (may be needed for some build dependencies)
+- CMake not installed (may be needed for some build dependencies)
+- MAP/PBAP profile availability on this BlueZ configuration not yet confirmed
 
 ## Approved system changes
-- None
+- None yet
 
 ## Pending user actions
-- None
+- Approval needed for package installations in Phase 0C
 
 ## Next action
-Begin Phase 0B — read-only Raspberry Pi audit
+Begin Phase 0C — create diagnostic scripts (doctor.sh, inspect-device.sh, collect-logs.sh)
 
 ## Tests
 - None yet
@@ -33,6 +41,8 @@ Begin Phase 0B — read-only Raspberry Pi audit
 ## Important decisions
 - Use MIT license for original AnalogConnect code
 - Repository initialized on `main` branch
+- Environment audit completed before any modifications
 
 ## Unresolved questions
-- None
+- Are MAP/PBAP client profiles available on BlueZ 5.82 with this controller?
+- Will SCO audio route through PipeWire without additional configuration?
