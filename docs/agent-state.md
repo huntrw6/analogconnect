@@ -4,23 +4,24 @@
 Milestone 0
 
 ## Current phase
-Phase 4 — Controlled Restart Test Complete
+Phase 5D — Incoming-Call Test BLOCKED
 
 ## Current objective
-Determine why `headset-head-unit` EnumProfile doesn't appear AFTER successful HFP RFCOMM connection and AT negotiation.
+Run controlled incoming-call test to verify HFP SCO audio. Pre-test requirements not met.
 
 ## Current classification
-`HFP_SLC_WORKS_SCO_RESET_ENUMPROFILE_MISSING`
+`BLOCKED` — HFP RFCOMM cannot be established after disconnect/reconnect
 
 ## Last completed action
-Phase 4 controlled WirePlumber restart test completed. Key findings:
-1. After WirePlumber restart, device appeared in PipeWire after ~30s but `bluez5.profile = "off"`
-2. `ServicesResolved` was false initially, became true only after manual disconnect/reconnect
-3. RFCOMM + AT negotiation completed successfully after reconnect (btmon confirms SABM/UA, full AT+BRSF/BAC/CIND/CMER/CHLD/CLIP/CCWA/CMEE/CLCC)
-4. **CRITICAL**: Journal shows `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — headset-head-unit DID appear and SCO transport was created, but SCO link was reset by iPhone
-5. After SCO failure, profile reverted to "off" and headset-head-unit disappeared
-6. No RegisterProfile for HFP was observed in D-Bus tree after restart
-7. A2DP SET_CONFIGURATION rejected: "Configuration not supported (41)"
+Phase 5D incoming-call test BLOCKED at pre-test verification:
+1. After bluetoothctl disconnect/reconnect, device appears in PipeWire (`bluez5.profile = "off"`)
+2. `ServicesResolved = true`
+3. **No NewConnection in journal** — BlueZ never sends RFCOMM channel 8 connection to WirePlumber
+4. **No Profile1 registered for HFP** — WirePlumber's native backend fails to register
+5. **D-Bus method_return rejection persists**: WirePlumber → bluetoothd
+6. A2DP `SET_CONFIGURATION rejected: Configuration not supported (41)`
+7. Two disconnect/reconnect cycles attempted, same result both times
+8. Phase 5A lifecycle documented, Phase 5B call-state indicators decoded, Phase 5C confirmed `bluez5.disable-dummy-call` does not exist in PipeWire 1.4.2
 
 ## Evidence
 
@@ -81,10 +82,10 @@ Phase 4 controlled WirePlumber restart test completed. Key findings:
 
 ## Current blockers
 
-1. **SCO connection reset by iPhone** — `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — headset-head-unit appears, SCO transport created, but SCO link fails
-2. **`ServicesResolved` delayed** — false for 30+ seconds after WirePlumber restart, only resolves after manual disconnect/reconnect
-3. **A2DP codec negotiation rejected** — `SET_CONFIGURATION request rejected: Configuration not supported (41)`
-4. **D-Bus `method_return` rejection** — WirePlumber to bluetoothd, may prevent Profile1 reply delivery
+1. **HFP RFCOMM cannot be re-established** — After disconnect/reconnect, no NewConnection for HFP, no Profile1 registered, `bluez5.profile` stays "off". This BLOCKS all HFP testing.
+2. **D-Bus `method_return` rejection** — WirePlumber → bluetoothd (`Rejected send message, 0 matched rules`). Likely preventing Profile1 handshake completion.
+3. **A2DP codec negotiation rejected** — `SET_CONFIGURATION request rejected: Configuration not supported (41)` — repeated across all sessions
+4. **SCO connection reset by iPhone** (from Phase 4) — `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — untestable until RFCOMM is restored
 
 ## Approved system changes
 - Removed malformed system fragment `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf` → `.invalid-disabled`
@@ -94,18 +95,22 @@ Phase 4 controlled WirePlumber restart test completed. Key findings:
 - None
 
 ## Next action
-Phase 5: DisconnectProfile/ConnectProfile cycle to test if headset-head-unit reappears after SCO failure. Need user approval before executing.
+Investigate D-Bus method_return rejection preventing Profile1 registration. Possible options:
+1. Restart bluetoothd (would clear all pairings — high cost)
+2. Investigate D-Bus policy rules for WirePlumber → bluetoothd method_return
+3. Check if WirePlumber's native backend is attempting RegisterProfile and failing silently
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 - MH-MAP-001: PASS (MAP listing, retrieval working)
 - MH-PBAP-001: PASS (PBAP listing working after reconnection)
-- HFP ConnectProfile: PASS (RFCOMM established, AT negotiation successful — both Phase 7c, 7d, and 4b)
+- HFP ConnectProfile: PASS (RFCOMM established, AT negotiation successful — Phase 7c, 7d, 4b)
 - HFP NewConnection callback: PASS (earlier instance)
-- HFP SLC completion: PASS (AT+BRSF, AT+BAC, AT+CIND, AT+CMER, AT+CHLD, AT+CLIP, AT+CCWA, AT+CMEE, AT+CLCC all OK — Phase 7d and 4b)
+- HFP SLC completion: PASS (Phase 7d and 4b)
 - HFP SCO transport: PARTIAL (SCO sink created but reset by iPhone — error -104)
 - HFP profile activation: FAIL (headset-head-unit appears briefly then disappears after SCO failure)
 - Phase 4 WirePlumber restart: PARTIAL (RFCOMM+AT works, but ServicesResolved delayed, SCO fails)
+- Phase 5D incoming-call test: BLOCKED (HFP RFCOMM cannot be re-established after disconnect/reconnect)
 
 ## Important decisions
 - imsg works without bluez-obexd — uses own OBEX implementation
@@ -117,9 +122,8 @@ Phase 5: DisconnectProfile/ConnectProfile cycle to test if headset-head-unit rea
 - Registration ownership is connection-specific — UnregisterProfile from another client is not an existence test
 
 ## Unresolved questions
-- Why does `ServicesResolved` stay false for 30+ seconds after WirePlumber restart?
-- Why does the iPhone reset the SCO link? Is it a timing issue or a protocol error?
-- Does the A2DP SET_CONFIGURATION rejection affect SCO setup?
-- Why doesn't headset-head-unit reappear after SCO failure — is the profile state stuck?
-- Is the D-Bus `method_return` rejection preventing the Profile1 handshake from completing?
-- Does the iPhone cache something after the first SCO failure that prevents subsequent attempts?
+- Why does the D-Bus method_return rejection persist across WirePlumber restarts?
+- Why doesn't WirePlumber's native backend register Profile1 for HFP after reconnect?
+- Is there a D-Bus policy rule missing that would allow WirePlumber to reply to bluetoothd?
+- Would a bluetoothd restart clear the D-Bus state? What is the cost (re-pairing)?
+- Why does A2DP SET_CONFIGURATION keep failing with "Configuration not supported (41)"?
