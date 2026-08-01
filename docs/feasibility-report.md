@@ -113,7 +113,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 ### Failure Layer
 
-`HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC` — RFCOMM connection established by local Pi, AT negotiation completes successfully (SLC established), but `headset-head-unit` EnumProfile never appears in PipeWire. Issue is in spa-bluez5 profile state management after NewConnection.
+`HFP_SLC_WORKS_SCO_RESET_ENUMPROFILE_MISSING` — RFCOMM and SLC complete successfully. headset-head-unit appears and SCO transport is created, but SCO link is reset by iPhone (-104 Connection reset by peer). Profile reverts to "off". Root cause: iPhone rejecting or timing out the SCO connection.
 
 #### Superseded classifications (do not cite)
 
@@ -125,10 +125,11 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 - ~~"D-Bus rejects WirePlumber method_returns"~~ — withdrawn. Not proven.
 - ~~"BlueZ never opens RFCOMM channel 8"~~ — withdrawn. Phase 7d btmon proves RFCOMM SABM sent by local Pi, UA received, full AT negotiation completed.
 - ~~`HFP_CONTROL_PREVIOUSLY_VERIFIED_CURRENT_STATE_REQUIRES_RETEST`~~ — superseded by `HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC`.
+- ~~`HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC`~~ — superseded. Phase 4 proved headset-head-unit DOES appear and SCO IS attempted, but SCO fails.
 
 #### Current classification
 
-`HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC` — RFCOMM and SLC work. EnumProfile visibility is the remaining blocker.
+`HFP_SLC_WORKS_SCO_RESET_ENUMPROFILE_MISSING` — RFCOMM+SLC work, SCO transport created, but SCO link reset by iPhone.
 
 ### Previous Configuration Issues (resolved)
 
@@ -145,8 +146,9 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 2. ~~obexd not installed~~ — imsg uses own OBEX, works fine
 3. ~~Bluetooth group~~ — active in current session
 4. ~~`bluez5.hfphsp-backend` not configured~~ — SUPERSCEEDED. Default is already `native`.
-5. **`headset-head-unit` absent from PipeWire EnumProfile after successful SLC** — RFCOMM and AT negotiation work, but spa-bluez5 doesn't expose HFP HF profile
-6. **D-Bus `method_return` rejection** — WirePlumber to bluetoothd, may prevent Profile1 reply delivery
+5. **SCO connection reset by iPhone** — headset-head-unit appears, SCO transport created, but SCO link fails (-104)
+6. **`ServicesResolved` delayed 30+ seconds** — only resolves after manual disconnect/reconnect
+7. **A2DP SET_CONFIGURATION rejected** — iPhone rejected initial A2DP codec negotiation
 
 ## Key Findings
 
@@ -165,7 +167,10 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 13. Profile1 objects are client-owned — not visible in BlueZ ObjectManager
 14. One-shot busctl RegisterProfile does not persist — registration removed when caller exits
 15. Previous `PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED` diagnosis withdrawn — default is already `native`
-16. `HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC` — RFCOMM and SLC work, EnumProfile visibility is the blocker
+16. `HFP_SLC_WORKS_SCO_RESET_ENUMPROFILE_MISSING` — RFCOMM+SLC work, SCO transport created, but SCO link reset by iPhone
 17. Native backend and `hfp_hf` role are WirePlumber 0.5 defaults — no explicit config needed
 18. Phase 7d btmon proves local Pi initiates RFCOMM (SABM TX), not iPhone — earlier "BlueZ never opens RFCOMM" claim withdrawn
 19. D-Bus `method_return` rejection observed — may indicate security policy issue preventing Profile1 handshake completion
+20. Phase 4 restart: headset-head-unit DID appear (evidence: `spa.bluez5.sink.sco` error), but SCO link was reset by iPhone (-104)
+21. Phase 4 restart: `ServicesResolved` false for 30+ seconds — SDP delayed after WirePlumber restart
+22. Phase 4 restart: A2DP `SET_CONFIGURATION rejected: Configuration not supported (41)` — iPhone rejected codec

@@ -4,16 +4,23 @@
 Milestone 0
 
 ## Current phase
-Phase 3 — Timeline Reconstruction and Root Cause Narrowing
+Phase 4 — Controlled Restart Test Complete
 
 ## Current objective
 Determine why `headset-head-unit` EnumProfile doesn't appear AFTER successful HFP RFCOMM connection and AT negotiation.
 
 ## Current classification
-`HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC`
+`HFP_SLC_WORKS_SCO_RESET_ENUMPROFILE_MISSING`
 
 ## Last completed action
-Phase 2 analysis of btmon traces corrected earlier false conclusion. Phase 7c and Phase 7d btmon both show RFCOMM SABM sent by LOCAL Pi (TX), UA received from iPhone, and full AT negotiation completing successfully. The earlier claim "BlueZ never opens RFCOMM channel 8" is WITHDRAWN — btmon proves RFCOMM IS established. The real issue is downstream: after successful SLC, `headset-head-unit` still doesn't appear in PipeWire EnumProfile.
+Phase 4 controlled WirePlumber restart test completed. Key findings:
+1. After WirePlumber restart, device appeared in PipeWire after ~30s but `bluez5.profile = "off"`
+2. `ServicesResolved` was false initially, became true only after manual disconnect/reconnect
+3. RFCOMM + AT negotiation completed successfully after reconnect (btmon confirms SABM/UA, full AT+BRSF/BAC/CIND/CMER/CHLD/CLIP/CCWA/CMEE/CLCC)
+4. **CRITICAL**: Journal shows `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — headset-head-unit DID appear and SCO transport was created, but SCO link was reset by iPhone
+5. After SCO failure, profile reverted to "off" and headset-head-unit disappeared
+6. No RegisterProfile for HFP was observed in D-Bus tree after restart
+7. A2DP SET_CONFIGURATION rejected: "Configuration not supported (41)"
 
 ## Evidence
 
@@ -22,7 +29,7 @@ Phase 2 analysis of btmon traces corrected earlier false conclusion. Phase 7c an
 - `VERIFIED_HARDWARE`: MAP works (with reconnection)
 - `VERIFIED_HARDWARE`: PBAP works (with reconnection)
 - `VERIFIED_AUTOMATED`: The iPhone advertises HFP Audio Gateway UUID `111f`
-- `VERIFIED_AUTOMATED`: `ServicesResolved` was true
+- `VERIFIED_AUTOMATED`: `ServicesResolved` was true after manual disconnect/reconnect
 - `VERIFIED_AUTOMATED`: A previous WirePlumber instance registered `/Profile/HFPHF`
 - `VERIFIED_AUTOMATED`: BlueZ delivered NewConnection to `/Profile/HFPHF` during the earlier test
 - `VERIFIED_AUTOMATED`: The earlier WirePlumber instance received the RFCOMM file descriptor
@@ -34,6 +41,9 @@ Phase 2 analysis of btmon traces corrected earlier false conclusion. Phase 7c an
 - `VERIFIED_AUTOMATED`: Phase 7d btmon shows full AT negotiation: AT+BRSF, AT+BAC, AT+CIND, AT+CMER, AT+CHLD, AT+CLIP, AT+CCWA, AT+CMEE, AT+CLCC — all with OK responses
 - `VERIFIED_AUTOMATED`: Phase 7d btmon shows A2DP (AVDTP) and AVRCP (AVCTP) also established alongside HFP RFCOMM
 - `VERIFIED_AUTOMATED`: D-Bus journal shows `Rejected send message, 0 matched rules; type="method_return"` from WirePlumber to bluetoothd at 19:00:49 — may indicate D-Bus policy issue preventing Profile1 reply delivery
+- `VERIFIED_AUTOMATED`: Phase 4 restart: `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — headset-head-unit DID appear and SCO transport was created, but SCO link was reset by iPhone
+- `VERIFIED_AUTOMATED`: Phase 4 restart: `ServicesResolved` false for 30+ seconds after WirePlumber restart, only became true after manual disconnect/reconnect via bluetoothctl
+- `VERIFIED_AUTOMATED`: Phase 4 restart: A2DP `SET_CONFIGURATION request rejected: Configuration not supported (41)` — iPhone rejected initial A2DP codec negotiation
 
 ### Resolved by source code analysis
 
@@ -71,9 +81,10 @@ Phase 2 analysis of btmon traces corrected earlier false conclusion. Phase 7c an
 
 ## Current blockers
 
-1. `headset-head-unit` EnumProfile absent after successful SLC — root cause in spa-bluez5 profile state management unknown
-2. D-Bus `method_return` rejection from WirePlumber to bluetoothd may prevent Profile1 reply delivery — needs investigation
-3. `connected_profiles & SPA_BT_PROFILE_HEADSET_HEAD_UNIT` bit may never be set despite successful RFCOMM — needs source code tracing
+1. **SCO connection reset by iPhone** — `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — headset-head-unit appears, SCO transport created, but SCO link fails
+2. **`ServicesResolved` delayed** — false for 30+ seconds after WirePlumber restart, only resolves after manual disconnect/reconnect
+3. **A2DP codec negotiation rejected** — `SET_CONFIGURATION request rejected: Configuration not supported (41)`
+4. **D-Bus `method_return` rejection** — WirePlumber to bluetoothd, may prevent Profile1 reply delivery
 
 ## Approved system changes
 - Removed malformed system fragment `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf` → `.invalid-disabled`
@@ -83,17 +94,18 @@ Phase 2 analysis of btmon traces corrected earlier false conclusion. Phase 7c an
 - None
 
 ## Next action
-Phase 4: Controlled WirePlumber restart test with btmon + D-Bus monitor + journalctl to capture full lifecycle. Need user approval before executing.
+Phase 5: DisconnectProfile/ConnectProfile cycle to test if headset-head-unit reappears after SCO failure. Need user approval before executing.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 - MH-MAP-001: PASS (MAP listing, retrieval working)
 - MH-PBAP-001: PASS (PBAP listing working after reconnection)
-- HFP ConnectProfile: PASS (RFCOMM established, AT negotiation successful — both Phase 7c and 7d)
+- HFP ConnectProfile: PASS (RFCOMM established, AT negotiation successful — both Phase 7c, 7d, and 4b)
 - HFP NewConnection callback: PASS (earlier instance)
-- HFP SLC completion: PASS (AT+BRSF, AT+BAC, AT+CIND, AT+CMER, AT+CHLD, AT+CLIP, AT+CCWA, AT+CMEE, AT+CLCC all OK — Phase 7d)
-- HFP profile activation: FAIL (`headset-head-unit` absent despite successful SLC)
-- Current WirePlumber HFP registration: UNKNOWN (requires D-Bus trace with current process)
+- HFP SLC completion: PASS (AT+BRSF, AT+BAC, AT+CIND, AT+CMER, AT+CHLD, AT+CLIP, AT+CCWA, AT+CMEE, AT+CLCC all OK — Phase 7d and 4b)
+- HFP SCO transport: PARTIAL (SCO sink created but reset by iPhone — error -104)
+- HFP profile activation: FAIL (headset-head-unit appears briefly then disappears after SCO failure)
+- Phase 4 WirePlumber restart: PARTIAL (RFCOMM+AT works, but ServicesResolved delayed, SCO fails)
 
 ## Important decisions
 - imsg works without bluez-obexd — uses own OBEX implementation
@@ -105,9 +117,9 @@ Phase 4: Controlled WirePlumber restart test with btmon + D-Bus monitor + journa
 - Registration ownership is connection-specific — UnregisterProfile from another client is not an existence test
 
 ## Unresolved questions
-- Why doesn't `connected_profiles & SPA_BT_PROFILE_HEADSET_HEAD_UNIT` get set after successful RFCOMM + AT negotiation?
-- Does `profile_new_connection()` in `backend-native.c` successfully create a transport after NewConnection?
-- Does the D-Bus `method_return` rejection prevent BlueZ from completing the Profile1 handshake?
-- Is the RFCOMM fd being properly inherited by WirePlumber's HFP handler?
-- Does the A2DP connection interfere with HFP profile state management?
-- What happens between AT+CLCC OK and `headset-head-unit` visibility — where does the chain break?
+- Why does `ServicesResolved` stay false for 30+ seconds after WirePlumber restart?
+- Why does the iPhone reset the SCO link? Is it a timing issue or a protocol error?
+- Does the A2DP SET_CONFIGURATION rejection affect SCO setup?
+- Why doesn't headset-head-unit reappear after SCO failure — is the profile state stuck?
+- Is the D-Bus `method_return` rejection preventing the Profile1 handshake from completing?
+- Does the iPhone cache something after the first SCO failure that prevents subsequent attempts?
