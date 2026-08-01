@@ -72,10 +72,9 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 ### Local Pi Registration (from D-Bus trace)
 
-- Local HFP HF (`0000111e`) registered at `/Profile/HFPHF` — `VERIFIED_AUTOMATED` (old WirePlumber instance only)
-- Local HFP AG (`0000111f`) registered at `/Profile/HFPAG` — `VERIFIED_AUTOMATED` (old WirePlumber instance only)
-- After bluetoothd + wireplumber restart: 0 Profile1 interfaces registered — `VERIFIED_AUTOMATED`
-- WirePlumber registers A2DP MediaEndpoints but NOT HFP Profile1 interfaces — `VERIFIED_AUTOMATED`
+- Local HFP HF (`0000111e`) registered at `/Profile/HFPHF` — `VERIFIED_AUTOMATED` (earlier WirePlumber instance only)
+- Local HFP AG (`0000111f`) registered at `/Profile/HFPAG` — `VERIFIED_AUTOMATED` (earlier WirePlumber instance only)
+- Current WirePlumber HFP registration status — `UNKNOWN` (requires D-Bus trace retest with correct methodology)
 
 ### PipeWire Profile Enumeration
 
@@ -106,26 +105,30 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 ### HFP Isolation Test Results
 
-`VERIFIED_AUTOMATED`: `bluez5.roles=[hfp_hf]` isolation fragment causes Bluetooth device to disappear from PipeWire entirely — no bluez5 device in `wpctl status` or `pw-cli ls Device`.
+`INCONCLUSIVE`: `bluez5.roles=[hfp_hf]` isolation fragment caused no PipeWire device to appear before a verified fresh HFP connection was completed. Device absence is expected behavior when A2DP roles are disabled and no HFP connection exists, not proof of configuration failure.
 
-`VERIFIED_AUTOMATED`: After bluetoothd + WirePlumber restart, 0 Profile1 interfaces registered. WirePlumber only registers A2DP MediaEndpoints (ldac, aptx_hd, aptx, sbc, etc.) but NOT HFP Profile1 interfaces.
+`UNKNOWN`: Whether the current WirePlumber process registers HFP Profile1 interfaces. Previous test used invalid ObjectManager inspection on the wrong D-Bus service.
 
-`VERIFIED_AUTOMATED`: `RegisterProfile(111e)` fails with "UUID already registered" — stale registration persists across bluetoothd restart. BlueZ internal state retains the registration even after process restart.
-
-`VERIFIED_AUTOMATED`: D-Bus `method_return` from WirePlumber to bluetoothd rejected — "0 matched rules". `requested_reply="0"` indicates D-Bus daemon does not recognize this as a reply to an incoming method call.
+`UNKNOWN`: Whether a manual `RegisterProfile(111e)` failure was due to stale registration or the expected behavior of a one-shot busctl call (registration removed when caller exits).
 
 ### Failure Layer
 
-`HFP_CONTROL_CONNECTED_PIPEWIRE_AUDIO_PROFILE_MISSING` — BlueZ correctly invokes `/Profile/HFPHF/NewConnection` and delivers the RFCOMM fd to WirePlumber. HFP AT negotiation completes successfully (Pi sends HF commands, iPhone responds as AG). But `headset-head-unit` does not appear in PipeWire EnumProfile and no HFP transport is created.
+`HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC` — RFCOMM connection established by local Pi, AT negotiation completes successfully (SLC established), but `headset-head-unit` EnumProfile never appears in PipeWire. Issue is in spa-bluez5 profile state management after NewConnection.
 
 #### Superseded classifications (do not cite)
 
-- ~~`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED`~~ — withdrawn. Based on (1) malformed fragment syntax (`["bluez5.hfphsp-backend"]` Lua-table key syntax instead of SPA-JSON) and (2) the incorrect assumption that the native backend was not running. Successful AT negotiation indicates the native backend was already active. The official default for `bluez5.hfphsp-backend` is already `native`. The malformed fragment test did not prove the hypothesis.
+- ~~`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED`~~ — withdrawn. Default is already `native`.
 - ~~`BLUEZ_PROFILE_MATCHING_FAILURE`~~ — withdrawn. The NewConnection callback IS delivered at the correct path.
+- ~~`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED`~~ (duplicate) — see above.
+- ~~"WirePlumber registers 0 Profile1 interfaces"~~ — withdrawn. ObjectManager on `org.bluez` does not list client-owned Profile1 objects.
+- ~~"Stale UUID registration persists"~~ — withdrawn. One-shot busctl registration is not persistent.
+- ~~"D-Bus rejects WirePlumber method_returns"~~ — withdrawn. Not proven.
+- ~~"BlueZ never opens RFCOMM channel 8"~~ — withdrawn. Phase 7d btmon proves RFCOMM SABM sent by local Pi, UA received, full AT negotiation completed.
+- ~~`HFP_CONTROL_PREVIOUSLY_VERIFIED_CURRENT_STATE_REQUIRES_RETEST`~~ — superseded by `HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC`.
 
-#### Neutral classification
+#### Current classification
 
-`HFP_CONTROL_CONNECTED_PIPEWIRE_AUDIO_PROFILE_MISSING` — HFP Hands-Free service-level connection succeeds but `headset-head-unit` is absent from PipeWire EnumProfile. No HFP transport or SCO nodes are created. The failure could be at the profile construction layer, transport creation layer, or the expectation about profile availability timing.
+`HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC` — RFCOMM and SLC work. EnumProfile visibility is the remaining blocker.
 
 ### Previous Configuration Issues (resolved)
 
@@ -142,10 +145,8 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 2. ~~obexd not installed~~ — imsg uses own OBEX, works fine
 3. ~~Bluetooth group~~ — active in current session
 4. ~~`bluez5.hfphsp-backend` not configured~~ — SUPERSCEEDED. Default is already `native`.
-5. **WirePlumber does NOT register HFP Profile1 interfaces after restart** — only A2DP MediaEndpoints registered. `VERIFIED_AUTOMATED`.
-6. **Stale BlueZ UUID `111e` registration** — persists across bluetoothd restart, blocks manual re-registration. `VERIFIED_AUTOMATED`.
-7. **`bluez5.roles=[hfp_hf]` causes device disappearance** — cannot use isolation fragment for testing. `VERIFIED_AUTOMATED`.
-8. **D-Bus policy rejects WirePlumber method_returns** — "0 matched rules" for method_return to bluetoothd. `VERIFIED_AUTOMATED`.
+5. **`headset-head-unit` absent from PipeWire EnumProfile after successful SLC** — RFCOMM and AT negotiation work, but spa-bluez5 doesn't expose HFP HF profile
+6. **D-Bus `method_return` rejection** — WirePlumber to bluetoothd, may prevent Profile1 reply delivery
 
 ## Key Findings
 
@@ -159,13 +160,12 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 8. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG)
 9. Explicit `ConnectProfile(111f)` succeeds — HFP RFCOMM connection established
 10. HFP AT negotiation completes successfully — all commands return OK
-11. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber receives RFCOMM fd — `VERIFIED_AUTOMATED` (old instance only)
-12. After clean restart: WirePlumber registers A2DP MediaEndpoints but NOT HFP Profile1 interfaces — `VERIFIED_AUTOMATED`
-13. After clean restart: 0 Profile1 interfaces in ObjectManager — `VERIFIED_AUTOMATED`
-14. `bluez5.roles=[hfp_hf]` causes Bluetooth device to disappear from PipeWire entirely — `VERIFIED_AUTOMATED`
-15. Stale UUID `111e` registration persists across bluetoothd restart — `VERIFIED_AUTOMATED`
-16. D-Bus rejects WirePlumber method_returns to bluetoothd — "0 matched rules" — `VERIFIED_AUTOMATED`
-17. Malformed system fragment removed — was using Lua-table key syntax in SPA-JSON context
-18. `HFP_CONTROL_CONNECTED_PIPEWIRE_AUDIO_PROFILE_MISSING` — current neutral classification
-19. Previous `PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED` diagnosis withdrawn — default is already `native`
-20. Native backend and `hfp_hf` role are WirePlumber 0.5 defaults — no explicit config needed
+11. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber receives RFCOMM fd (earlier instance)
+12. `bluez5.roles=[hfp_hf]` absence before HFP connection is expected behavior, not proof of failure
+13. Profile1 objects are client-owned — not visible in BlueZ ObjectManager
+14. One-shot busctl RegisterProfile does not persist — registration removed when caller exits
+15. Previous `PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED` diagnosis withdrawn — default is already `native`
+16. `HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC` — RFCOMM and SLC work, EnumProfile visibility is the blocker
+17. Native backend and `hfp_hf` role are WirePlumber 0.5 defaults — no explicit config needed
+18. Phase 7d btmon proves local Pi initiates RFCOMM (SABM TX), not iPhone — earlier "BlueZ never opens RFCOMM" claim withdrawn
+19. D-Bus `method_return` rejection observed — may indicate security policy issue preventing Profile1 handshake completion

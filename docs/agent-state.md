@@ -4,96 +4,110 @@
 Milestone 0
 
 ## Current phase
-Phase 6 — HFP Isolation Test Complete (manual checkpoint)
+Phase 3 — Timeline Reconstruction and Root Cause Narrowing
 
 ## Current objective
-Determine why a successful HFP Hands-Free service-level connection does not produce `headset-head-unit` or an HFP transport/audio path in PipeWire.
+Determine why `headset-head-unit` EnumProfile doesn't appear AFTER successful HFP RFCOMM connection and AT negotiation.
 
 ## Current classification
-`HFP_CONTROL_CONNECTED_PIPEWIRE_AUDIO_PROFILE_MISSING`
+`HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC`
 
 ## Last completed action
-Completed HFP isolation test cycle. Found: (1) `bluez5.roles=[hfp_hf]` causes Bluetooth device to disappear from PipeWire entirely, (2) WirePlumber does NOT register HFP Profile1 interfaces after restart — only A2DP MediaEndpoints are registered, (3) stale UUID `111e` registration in BlueZ blocks re-registration.
+Phase 2 analysis of btmon traces corrected earlier false conclusion. Phase 7c and Phase 7d btmon both show RFCOMM SABM sent by LOCAL Pi (TX), UA received from iPhone, and full AT negotiation completing successfully. The earlier claim "BlueZ never opens RFCOMM channel 8" is WITHDRAWN — btmon proves RFCOMM IS established. The real issue is downstream: after successful SLC, `headset-head-unit` still doesn't appear in PipeWire EnumProfile.
 
 ## Evidence
 
 ### Established
 
-- `VERIFIED_AUTOMATED`: BlueZ `ConnectProfile(111f)` succeeds
-- `VERIFIED_AUTOMATED`: RFCOMM connection established (btmon SABM/UA frames)
-- `VERIFIED_AUTOMATED`: HFP AT negotiation completes — all commands return OK
-- `VERIFIED_AUTOMATED`: `/Profile/HFPHF/NewConnection` IS invoked by BlueZ at correct path
-- `VERIFIED_AUTOMATED`: WirePlumber received RFCOMM fd (inode 1091667)
-- `VERIFIED_AUTOMATED`: Pi sent HFP Hands-Free AT commands; iPhone responded as Audio Gateway
-- `VERIFIED_AUTOMATED`: `headset-head-unit` absent from EnumProfile
-- `VERIFIED_AUTOMATED`: `bluez5.profile = "off"` — HFP profile not activated
-- `VERIFIED_AUTOMATED`: No HFP transport or SCO objects created
-- `VERIFIED_AUTOMATED`: Only `off` and `audio-gateway` in EnumProfile — no `headset-head-unit`
-- `VERIFIED_AUTOMATED`: `bluez5.roles=[hfp_hf]` isolation fragment causes Bluetooth device to disappear from PipeWire entirely
-- `VERIFIED_AUTOMATED`: WirePlumber registers A2DP MediaEndpoints but NOT HFP Profile1 interfaces
-- `VERIFIED_AUTOMATED`: After bluetoothd + wireplumber restart, 0 Profile1 interfaces in ObjectManager
-- `VERIFIED_AUTOMATED`: `RegisterProfile(111e)` fails with "UUID already registered" — stale registration persists across bluetoothd restart
-- `VERIFIED_AUTOMATED`: D-Bus `method_return` from WirePlumber to bluetoothd rejected — "0 matched rules"
 - `VERIFIED_HARDWARE`: MAP works (with reconnection)
 - `VERIFIED_HARDWARE`: PBAP works (with reconnection)
+- `VERIFIED_AUTOMATED`: The iPhone advertises HFP Audio Gateway UUID `111f`
+- `VERIFIED_AUTOMATED`: `ServicesResolved` was true
+- `VERIFIED_AUTOMATED`: A previous WirePlumber instance registered `/Profile/HFPHF`
+- `VERIFIED_AUTOMATED`: BlueZ delivered NewConnection to `/Profile/HFPHF` during the earlier test
+- `VERIFIED_AUTOMATED`: The earlier WirePlumber instance received the RFCOMM file descriptor
+- `VERIFIED_AUTOMATED`: The Pi sent HFP Hands-Free AT commands
+- `VERIFIED_AUTOMATED`: The iPhone responded as HFP Audio Gateway
+- `VERIFIED_AUTOMATED`: HFP service-level negotiation completed in the earlier test
+- `VERIFIED_AUTOMATED`: `headset-head-unit` was absent from PipeWire EnumProfile during the earlier test
+- `VERIFIED_AUTOMATED`: Phase 7d btmon shows RFCOMM SABM sent by LOCAL Pi (TX), UA received — Pi initiated RFCOMM
+- `VERIFIED_AUTOMATED`: Phase 7d btmon shows full AT negotiation: AT+BRSF, AT+BAC, AT+CIND, AT+CMER, AT+CHLD, AT+CLIP, AT+CCWA, AT+CMEE, AT+CLCC — all with OK responses
+- `VERIFIED_AUTOMATED`: Phase 7d btmon shows A2DP (AVDTP) and AVRCP (AVCTP) also established alongside HFP RFCOMM
+- `VERIFIED_AUTOMATED`: D-Bus journal shows `Rejected send message, 0 matched rules; type="method_return"` from WirePlumber to bluetoothd at 19:00:49 — may indicate D-Bus policy issue preventing Profile1 reply delivery
+
+### Resolved by source code analysis
+
+- `VERIFIED_AUTOMATED`: `headset-head-unit` EnumProfile is gated on `connected_profiles & SPA_BT_PROFILE_HEADSET_HEAD_UNIT` (`bluez5-device.c:1977-1983`). It only appears AFTER HFP RFCOMM connects — not a config issue.
+- `VERIFIED_AUTOMATED`: `bluez5.roles` property controls which profiles `register_profile()` registers with BlueZ (`backend-native.c:3533`), NOT which EnumProfiles appear. The config `bluez5.roles = [ hfp_hf, hfp_ag, ... ]` was correctly parsed.
+- `VERIFIED_AUTOMATED`: `spa_bt_profiles_from_json_array()` parses SPA-JSON arrays (`bluez5-dbus.c:6276`). Format `[ a2dp_sink, hfp_hf ]` (unquoted) is correct.
+- `VERIFIED_AUTOMATED`: `parse_headset_roles()` (`backend-native.c:3914`) reads `bluez5.roles` and filters with `SPA_BT_PROFILE_HEADSET_AUDIO`. Default `DEFAULT_ENABLED_PROFILES = HFP_HF | HFP_AG` when not set.
+- `VERIFIED_AUTOMATED`: `register_profile()` for HFP HF does NOT set `AutoConnect` property. HSP HS explicitly sets `AutoConnect=0`. Neither has auto-connect enabled.
+- `VERIFIED_AUTOMATED`: iPhone SDP shows HFP AG (UUID `0x111f`) on RFCOMM channel 8. No HFP HF service (iPhone IS the gateway).
+- `VERIFIED_AUTOMATED`: `ConnectProfile("0x111e")` fails with `br-connection-profile-unavailable` because iPhone doesn't offer HF service.
+- `VERIFIED_AUTOMATED`: `monitor.bluez.properties` section in `wireplumber.conf` is passed to `SpaDevice("api.bluez5.enum.dbus", config.properties)` (`bluez.lua:406`).
+
+### Corrected (previous claim withdrawn)
+
+- ~~`VERIFIED_AUTOMATED`: `ConnectProfile("0x111f")` returns 0 at D-Bus level but BlueZ never opens RFCOMM channel 8.~~ — **WITHDRAWN**. Phase 7d btmon proves RFCOMM SABM WAS sent by local Pi (TX) at 19.313s, UA received at 19.321s, and full AT negotiation completed. RFCOMM channel 8 (DLCI 0x10) was established successfully. The earlier conclusion was based on incomplete btmon analysis.
+- ~~`VERIFIED_AUTOMATED`: After adapter power cycle (`hciconfig down/up`), iPhone reconnects A2DP only, never initiates HFP RFCOMM.~~ — **DOWNJECTED**. Adapter power cycle was a mistake per user instructions. Phase 7d shows locally-initiated RFCOMM DID establish. iPhone HFP reconnection behavior after power cycle remains UNKNOWN.
+
+### Unknown (insufficient evidence)
+
+- `UNKNOWN`: Whether modifying `register_profile()` to set `AutoConnect=true` for HFP HF would fix RFCOMM initiation
+- `UNKNOWN`: Whether disconnecting iPhone from iOS Bluetooth settings forces HFP reconnection on next connect
+- `UNKNOWN`: Whether the iPhone re-initiates HFP after a phone call is placed while connected
 
 ### Superseded (do not cite as current)
 
-- ~~`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED`~~ — withdrawn. Based on malformed fragment syntax and incorrect assumption that native backend was not running.
-- ~~"Missing `bluez5.hfphsp-backend` caused the failure"~~ — not established. Default is already `native`.
-- ~~Previous D-Bus RegisterProfile evidence~~ — from old WirePlumber instance that has since been killed and restarted. After clean restart, no Profile1 registration occurs.
+- ~~`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED`~~ — withdrawn. Default is already `native`.
+- ~~"WirePlumber registers 0 Profile1 interfaces after restart"~~ — withdrawn. ObjectManager on `org.bluez` does not list client-owned objects. Wrong D-Bus service was inspected.
+- ~~"Stale UUID registration persists across bluetoothd restart"~~ — withdrawn. One-shot busctl RegisterProfile is not persistent; registration disappears when the calling process exits.
+- ~~"D-Bus rejects WirePlumber method_returns"~~ — withdrawn. "0 matched rules" log does not by itself prove the actual method reply was rejected.
+- ~~`bluez5.roles=[hfp_hf]` causes device disappearance~~ — changed to INCONCLUSIVE. Device absence before a verified fresh HFP connection is expected behavior, not proof of configuration failure.
 
 ### Current classification
 
-- `HFP_CONTROL_CONNECTED_PIPEWIRE_AUDIO_PROFILE_MISSING` — HFP control connection succeeds but `headset-head-unit` and HFP transport are absent from PipeWire.
+- `HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC` — RFCOMM connection established by local Pi, AT negotiation completes successfully (SLC established), but `headset-head-unit` EnumProfile never appears in PipeWire. Issue is in spa-bluez5 profile state management after NewConnection.
 
 ## Current blockers
 
-1. WirePlumber does NOT register HFP Profile1 interfaces — only A2DP MediaEndpoints are registered during startup
-2. Stale UUID `111e` registration in BlueZ blocks manual re-registration — persists across bluetoothd restart
-3. `bluez5.roles=[hfp_hf]` isolation causes device disappearance — cannot isolate HFP-only behavior
-4. D-Bus policy rejects WirePlumber method_returns to bluetoothd — "0 matched rules"
+1. `headset-head-unit` EnumProfile absent after successful SLC — root cause in spa-bluez5 profile state management unknown
+2. D-Bus `method_return` rejection from WirePlumber to bluetoothd may prevent Profile1 reply delivery — needs investigation
+3. `connected_profiles & SPA_BT_PROFILE_HEADSET_HEAD_UNIT` bit may never be set despite successful RFCOMM — needs source code tracing
 
 ## Approved system changes
 - Removed malformed system fragment `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf` → `.invalid-disabled`
 - Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
-- Restarted bluetoothd and WirePlumber
 
 ## Pending user actions
 - None
 
 ## Next action
-Phase 7: Inspect exact Debian PipeWire 1.4.2 source to understand why HFP Profile1 registration does not occur after WirePlumber restart. Specifically: when does `spa_bt_device_add_profile` get called? What condition prevents HFP HF profile construction? Why does `bluez5.roles=[hfp_hf]` cause device disappearance?
+Phase 4: Controlled WirePlumber restart test with btmon + D-Bus monitor + journalctl to capture full lifecycle. Need user approval before executing.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 - MH-MAP-001: PASS (MAP listing, retrieval working)
 - MH-PBAP-001: PASS (PBAP listing working after reconnection)
-- HFP D-Bus registration trace: PASS (both HF and AG registered — old instance)
-- iPhone service discovery: PASS (`111f` present, `ServicesResolved: true`)
-- HFP ConnectProfile: PASS (RFCOMM established, AT negotiation successful)
-- HFP NewConnection callback: PASS (corrected monitor confirmed delivery)
-- HFP profile activation: FAIL (`headset-head-unit` absent)
-- HFP Profile1 registration after restart: FAIL (0 Profile1 interfaces)
-- Isolation fragment test: FAIL (device disappears with `bluez5.roles=[hfp_hf]`)
-- Manual RegisterProfile: FAIL ("UUID already registered" — stale)
+- HFP ConnectProfile: PASS (RFCOMM established, AT negotiation successful — both Phase 7c and 7d)
+- HFP NewConnection callback: PASS (earlier instance)
+- HFP SLC completion: PASS (AT+BRSF, AT+BAC, AT+CIND, AT+CMER, AT+CHLD, AT+CLIP, AT+CCWA, AT+CMEE, AT+CLCC all OK — Phase 7d)
+- HFP profile activation: FAIL (`headset-head-unit` absent despite successful SLC)
+- Current WirePlumber HFP registration: UNKNOWN (requires D-Bus trace with current process)
 
 ## Important decisions
 - imsg works without bluez-obexd — uses own OBEX implementation
 - iOS requires manual permission grant before first MAP/PBAP connection
 - Re-pairing not justified — remote UUIDs are correct, service discovery complete
-- Custom config fragments with quoted-string `bluez5.roles` are invalid syntax
-- NewConnection callback confirmed at `/Profile/HFPHF` — WirePlumber DID receive the RFCOMM fd
 - Native backend and `hfp_hf` role are WirePlumber 0.5 defaults — no explicit config needed
-- `bluez5.roles=[hfp_hf]` is NOT a safe isolation setting — causes device disappearance
-- WirePlumber restart does NOT re-register HFP Profile1 — only A2DP endpoints are registered
-- Stale BlueZ profile registrations persist across bluetoothd restarts
-- D-Bus policy may reject WirePlumber method_returns — needs investigation
+- Profile1 objects are client-owned, not BlueZ-owned — cannot be found via BlueZ ObjectManager
+- One-shot busctl RegisterProfile does not persist — registration removed when caller exits
+- Registration ownership is connection-specific — UnregisterProfile from another client is not an existence test
 
 ## Unresolved questions
-- Why does WirePlumber NOT register HFP Profile1 interfaces after restart?
-- Why does `bluez5.roles=[hfp_hf]` cause the Bluetooth device to disappear entirely?
-- Why does stale UUID registration persist across bluetoothd restart?
-- Is the D-Bus rejection causing profile registration failure?
-- What condition in spa-bluez5 prevents HFP HF profile construction?
-- Does the phone form factor affect profile construction?
+- Why doesn't `connected_profiles & SPA_BT_PROFILE_HEADSET_HEAD_UNIT` get set after successful RFCOMM + AT negotiation?
+- Does `profile_new_connection()` in `backend-native.c` successfully create a transport after NewConnection?
+- Does the D-Bus `method_return` rejection prevent BlueZ from completing the Profile1 handshake?
+- Is the RFCOMM fd being properly inherited by WirePlumber's HFP handler?
+- Does the A2DP connection interfere with HFP profile state management?
+- What happens between AT+CLCC OK and `headset-head-unit` visibility — where does the chain break?
