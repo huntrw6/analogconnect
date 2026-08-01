@@ -4,24 +4,16 @@
 Milestone 0
 
 ## Current phase
-Phase 5D — Incoming-Call Test BLOCKED
+Phase A — Proving Current HFP Registration
 
 ## Current objective
-Run controlled incoming-call test to verify HFP SCO audio. Pre-test requirements not met.
+Determine whether the current WirePlumber process has registered /Profile/HFPHF, whether ConnectProfile(111f) triggers RFCOMM, and correlate the rejected D-Bus method_return.
 
 ## Current classification
-`BLOCKED` — HFP RFCOMM cannot be established after disconnect/reconnect
+`HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED`
 
 ## Last completed action
-Phase 5D incoming-call test BLOCKED at pre-test verification:
-1. After bluetoothctl disconnect/reconnect, device appears in PipeWire (`bluez5.profile = "off"`)
-2. `ServicesResolved = true`
-3. **No NewConnection in journal** — BlueZ never sends RFCOMM channel 8 connection to WirePlumber
-4. **No Profile1 registered for HFP** — WirePlumber's native backend fails to register
-5. **D-Bus method_return rejection persists**: WirePlumber → bluetoothd
-6. A2DP `SET_CONFIGURATION rejected: Configuration not supported (41)`
-7. Two disconnect/reconnect cycles attempted, same result both times
-8. Phase 5A lifecycle documented, Phase 5B call-state indicators decoded, Phase 5C confirmed `bluez5.disable-dummy-call` does not exist in PipeWire 1.4.2
+Phase 5D incoming-call test blocked at pre-test verification. Documentation corrected to withdraw unsupported claims about D-Bus method_return rejection preventing Profile1 registration and ConnectProfile role mismatch.
 
 ## Evidence
 
@@ -60,7 +52,8 @@ Phase 5D incoming-call test BLOCKED at pre-test verification:
 ### Corrected (previous claim withdrawn)
 
 - ~~`VERIFIED_AUTOMATED`: `ConnectProfile("0x111f")` returns 0 at D-Bus level but BlueZ never opens RFCOMM channel 8.~~ — **WITHDRAWN**. Phase 7d btmon proves RFCOMM SABM WAS sent by local Pi (TX) at 19.313s, UA received at 19.321s, and full AT negotiation completed. RFCOMM channel 8 (DLCI 0x10) was established successfully. The earlier conclusion was based on incomplete btmon analysis.
-- ~~`VERIFIED_AUTOMATED`: After adapter power cycle (`hciconfig down/up`), iPhone reconnects A2DP only, never initiates HFP RFCOMM.~~ — **DOWNJECTED**. Adapter power cycle was a mistake per user instructions. Phase 7d shows locally-initiated RFCOMM DID establish. iPhone HFP reconnection behavior after power cycle remains UNKNOWN.
+- ~~`VERIFIED_AUTOMATED`: After adapter power cycle (`hciconfig down/up`), iPhone reconnects A2DP only, never initiates HFP RFCOMM.~~ — **WITHDRAWN**. Adapter power cycle was a mistake per user instructions. Phase 7d shows locally-initiated RFCOMM DID establish. iPhone HFP reconnection behavior after power cycle remains UNKNOWN.
+- ~~`VERIFIED_AUTOMATED`: `ConnectProfile("0x111e")` fails with `br-connection-profile-unavailable` because iPhone doesn't offer HF service.~~ — **WITHDRAWN**. This is incorrect. BlueZ `Device1.ConnectProfile()` takes the remote service UUID. The correct remote UUID is `0000111f-0000-1000-8000-00805f9b34fb` (HFP Audio Gateway). A successful empty result from `ConnectProfile(111f)` means the D-Bus call returned without an error. It does not prove that RFCOMM subsequently opened, but it is not a role mismatch.
 
 ### Unknown (insufficient evidence)
 
@@ -78,14 +71,13 @@ Phase 5D incoming-call test BLOCKED at pre-test verification:
 
 ### Current classification
 
-- `HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC` — RFCOMM connection established by local Pi, AT negotiation completes successfully (SLC established), but `headset-head-unit` EnumProfile never appears in PipeWire. Issue is in spa-bluez5 profile state management after NewConnection.
+- `HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED` — Whether the current WirePlumber process registered /Profile/HFPHF is unknown. Whether ConnectProfile(111f) triggers RFCOMM is untested. The rejected D-Bus method_return has not been correlated to a specific method call.
 
 ## Current blockers
 
-1. **HFP RFCOMM cannot be re-established** — After disconnect/reconnect, no NewConnection for HFP, no Profile1 registered, `bluez5.profile` stays "off". This BLOCKS all HFP testing.
-2. **D-Bus `method_return` rejection** — WirePlumber → bluetoothd (`Rejected send message, 0 matched rules`). Likely preventing Profile1 handshake completion.
-3. **A2DP codec negotiation rejected** — `SET_CONFIGURATION request rejected: Configuration not supported (41)` — repeated across all sessions
-4. **SCO connection reset by iPhone** (from Phase 4) — `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — untestable until RFCOMM is restored
+1. **HFP RFCOMM absent in current session** — After disconnect/reconnect, no RFCOMM channel 8 connection observed. Whether this is due to missing registration, ConnectProfile not called, or BlueZ state is unresolved.
+2. **A2DP codec negotiation rejected** — `SET_CONFIGURATION request rejected: Configuration not supported (41)` — repeated across all sessions
+3. **SCO connection reset by iPhone** (from Phase 4) — `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — untestable until RFCOMM is restored
 
 ## Approved system changes
 - Removed malformed system fragment `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf` → `.invalid-disabled`
@@ -95,10 +87,7 @@ Phase 5D incoming-call test BLOCKED at pre-test verification:
 - None
 
 ## Next action
-Investigate D-Bus method_return rejection preventing Profile1 registration. Possible options:
-1. Restart bluetoothd (would clear all pairings — high cost)
-2. Investigate D-Bus policy rules for WirePlumber → bluetoothd method_return
-3. Check if WirePlumber's native backend is attempting RegisterProfile and failing silently
+Phase A: Prove current HFP registration via WirePlumber restart with D-Bus capture. Then Phase B–E as described in the detailed test plan.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
@@ -122,8 +111,8 @@ Investigate D-Bus method_return rejection preventing Profile1 registration. Poss
 - Registration ownership is connection-specific — UnregisterProfile from another client is not an existence test
 
 ## Unresolved questions
-- Why does the D-Bus method_return rejection persist across WirePlumber restarts?
-- Why doesn't WirePlumber's native backend register Profile1 for HFP after reconnect?
-- Is there a D-Bus policy rule missing that would allow WirePlumber to reply to bluetoothd?
-- Would a bluetoothd restart clear the D-Bus state? What is the cost (re-pairing)?
+- Does the current WirePlumber process register /Profile/HFPHF? (Phase A will answer)
+- Does ConnectProfile(111f) currently trigger RFCOMM SABM? (Phase D will answer)
+- Which method call corresponds to the rejected D-Bus method_return? (Phase C will answer)
 - Why does A2DP SET_CONFIGURATION keep failing with "Configuration not supported (41)"?
+- Would a bluetoothd restart clear the state? What is the cost (re-pairing)?

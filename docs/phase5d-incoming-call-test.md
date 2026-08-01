@@ -30,21 +30,13 @@
 
 ## Blockers
 
-1. **No Profile1 registered for HFP** — WirePlumber's native backend should register `/Profile/HFPHF` via D-Bus, but the `method_return` rejection may prevent registration
-2. **D-Bus method_return rejection** — WirePlumber → bluetoothd, prevents Profile1 handshake from completing
-3. **A2DP SET_CONFIGURATION rejected** — `Configuration not supported (41)` — same as Phase 4
+1. **HFP RFCOMM absent** — No RFCOMM channel 8 connection observed after disconnect/reconnect. Whether this is due to missing Profile1 registration, ConnectProfile not called, or BlueZ state is unresolved.
+2. **A2DP SET_CONFIGURATION rejected** — `Configuration not supported (41)` — same as Phase 4
 
 ## Classification
 
-`BLOCKED` — Pre-test requirements not met. HFP RFCOMM cannot be established without a registered Profile1 object. The D-Bus method_return rejection is the root cause preventing Profile1 registration.
+`HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED` — Whether the current WirePlumber process registered /Profile/HFPHF is unknown. Whether ConnectProfile(111f) triggers RFCOMM is untested.
 
 ## Recommended next action
 
-**Investigate and resolve the D-Bus method_return rejection** before attempting another call test. The rejection may be caused by:
-- Missing D-Bus policy rule for WirePlumber → bluetoothd method_return
-- BlueZ policy agent blocking the reply
-- Stale D-Bus connection state
-
-Alternatively, a **bluetoothd restart** may clear the D-Bus state, but this would also clear all Bluetooth pairings and connections (user would need to re-pair).
-
-Do not proceed with the incoming-call test until HFP RFCOMM can be reliably established via the disconnect/reconnect procedure.
+Phase A: Prove current HFP registration via WirePlumber restart with D-Bus capture. Then Phase B–E.

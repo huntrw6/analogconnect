@@ -86,9 +86,9 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 ### HFP ConnectProfile Test Results
 
-`VERIFIED_AUTOMATED`: BlueZ `ConnectProfile(0000111f)` succeeds — "Connection successful"
-`VERIFIED_AUTOMATED`: RFCOMM connection established — btmon confirms SABM/UA frames
-`VERIFIED_AUTOMATED`: HFP AT negotiation completes successfully:
+`VERIFIED_AUTOMATED`: BlueZ `ConnectProfile(0000111f)` returns success — D-Bus call returned without error
+`VERIFIED_AUTOMATED`: RFCOMM connection established — btmon confirms SABM/UA frames (Phase 7d, 4b)
+`VERIFIED_AUTOMATED`: HFP AT negotiation completes successfully (Phase 7d, 4b):
 - `AT+BRSF=695` → `+BRSF:4079` → OK
 - `AT+BAC=1,2,3` → OK (codec negotiation)
 - `AT+CIND=?` → OK (indicator mapping)
@@ -113,7 +113,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 ### Failure Layer
 
-`HFP_SLC_WORKS_SCO_RESET_ENUMPROFILE_MISSING` — RFCOMM and SLC complete successfully. headset-head-unit appears and SCO transport is created, but SCO link is reset by iPhone (-104 Connection reset by peer). Profile reverts to "off". Root cause: iPhone rejecting or timing out the SCO connection.
+`HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED` — Whether the current WirePlumber process registered /Profile/HFPHF is unknown. Whether ConnectProfile(111f) triggers RFCOMM is untested. The rejected D-Bus method_return has not been correlated to a specific method call.
 
 #### Superseded classifications (do not cite)
 
@@ -122,14 +122,15 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 - ~~`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED`~~ (duplicate) — see above.
 - ~~"WirePlumber registers 0 Profile1 interfaces"~~ — withdrawn. ObjectManager on `org.bluez` does not list client-owned Profile1 objects.
 - ~~"Stale UUID registration persists"~~ — withdrawn. One-shot busctl registration is not persistent.
-- ~~"D-Bus rejects WirePlumber method_returns"~~ — withdrawn. Not proven.
+- ~~"D-Bus rejects WirePlumber method_returns"~~ — withdrawn. "0 matched rules" log does not by itself prove the actual method reply was rejected.
 - ~~"BlueZ never opens RFCOMM channel 8"~~ — withdrawn. Phase 7d btmon proves RFCOMM SABM sent by local Pi, UA received, full AT negotiation completed.
 - ~~`HFP_CONTROL_PREVIOUSLY_VERIFIED_CURRENT_STATE_REQUIRES_RETEST`~~ — superseded by `HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC`.
 - ~~`HFP_RFCOMM_WORKS_ENUMPROFILE_MISSING_AFTER_SLC`~~ — superseded. Phase 4 proved headset-head-unit DOES appear and SCO IS attempted, but SCO fails.
+- ~~`BLOCKED`~~ — withdrawn. The classification `BLOCKED` was based on unsupported claims about D-Bus method_return rejection preventing Profile1 registration and ConnectProfile role mismatch.
 
 #### Current classification
 
-`HFP_SLC_WORKS_SCO_RESET_ENUMPROFILE_MISSING` — RFCOMM+SLC work, SCO transport created, but SCO link reset by iPhone.
+`HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED` — Whether the current WirePlumber process registered /Profile/HFPHF is unknown. Whether ConnectProfile(111f) triggers RFCOMM is untested. The rejected D-Bus method_return has not been correlated to a specific method call.
 
 ### Previous Configuration Issues (resolved)
 
@@ -149,6 +150,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 5. **SCO connection reset by iPhone** — headset-head-unit appears, SCO transport created, but SCO link fails (-104)
 6. **`ServicesResolved` delayed 30+ seconds** — only resolves after manual disconnect/reconnect
 7. **A2DP SET_CONFIGURATION rejected** — iPhone rejected initial A2DP codec negotiation
+8. **HFP RFCOMM absent in current session** — Whether Profile1 is registered, ConnectProfile triggers RFCOMM, or BlueZ state is the cause is unresolved
 
 ## Key Findings
 
@@ -160,7 +162,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 6. MAP channel: RFCOMM 2, PBAP channel: RFCOMM 13
 7. iPhone advertises HFP AG (`111f`) — correct for Pi acting as hands-free
 8. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG)
-9. Explicit `ConnectProfile(111f)` succeeds — HFP RFCOMM connection established
+9. Explicit `ConnectProfile(111f)` returns success — HFP RFCOMM connection established (earlier tests)
 10. HFP AT negotiation completes successfully — all commands return OK
 11. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber receives RFCOMM fd (earlier instance)
 12. `bluez5.roles=[hfp_hf]` absence before HFP connection is expected behavior, not proof of failure
@@ -174,3 +176,5 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 20. Phase 4 restart: headset-head-unit DID appear (evidence: `spa.bluez5.sink.sco` error), but SCO link was reset by iPhone (-104)
 21. Phase 4 restart: `ServicesResolved` false for 30+ seconds — SDP delayed after WirePlumber restart
 22. Phase 4 restart: A2DP `SET_CONFIGURATION rejected: Configuration not supported (41)` — iPhone rejected codec
+23. `ConnectProfile(111f)` uses the correct remote UUID (HFP Audio Gateway), not a role mismatch
+24. D-Bus `method_return` rejection from WirePlumber to bluetoothd observed but not proven to prevent Profile1 registration
