@@ -1,42 +1,27 @@
 # Phase 5D — Controlled Incoming-Call Test
 
-## Status: BLOCKED — Pre-test requirements not met
+## Status: BLOCKED — EnumProfile absent
 
 ## Pre-test verification
 
 | Requirement | Result | Evidence |
 |---|---|---|
-| iPhone Connected=true | ✅ | `bluetoothctl info` shows `Connected: yes` |
-| ServicesResolved=true | ✅ | D-Bus Properties: `ServicesResolved b true` |
-| HFP RFCOMM channel 8 connected | ❌ | No NewConnection in journal, no Profile1 registered |
-| HFP service-level connection complete | ❌ | No AT commands observed after reconnect |
-| headset-head-unit present or available | ❌ | `bluez5.profile = "off"`, no HFP sink/source in PipeWire |
-| call=0 | N/A | RFCOMM not active |
-| callsetup=0 | N/A | RFCOMM not active |
-| callheld=0 | N/A | RFCOMM not active |
-
-## Procedure attempted
-
-1. Initial state: `ServicesResolved=false`, `bluez5.profile="off"` — HFP absent
-2. Disconnect via `bluetoothctl disconnect <REDACTED_BLUETOOTH_ADDRESS>`
-3. Reconnect via `bluetoothctl connect <REDACTED_BLUETOOTH_ADDRESS>`
-4. Wait 30+ seconds: device appears in PipeWire (`wpctl status`: device 41 `illuminary-cinema` [bluez5]) but `bluez5.profile = "off"`
-5. `ServicesResolved = true`
-6. A2DP endpoints registered (`Endpoint sep1-sep6 NEW`), but A2DP `SET_CONFIGURATION rejected: Configuration not supported (41)`
-7. **No NewConnection in journal** — BlueZ never sent RFCOMM channel 8 connection to WirePlumber
-8. **D-Bus method_return rejection persists**: `Rejected send message, 0 matched rules; type="method_return", sender=":1.798" (WirePlumber) ... destination=":1.634" (bluetoothd)`
-9. Second disconnect/reconnect cycle: same result
-10. Attempted `ConnectProfile("0000111f-...")` — fails because iPhone is Audio Gateway, not HF
-
-## Blockers
-
-1. **HFP RFCOMM absent** — No RFCOMM channel 8 connection observed after disconnect/reconnect. Whether this is due to missing Profile1 registration, ConnectProfile not called, or BlueZ state is unresolved.
-2. **A2DP SET_CONFIGURATION rejected** — `Configuration not supported (41)` — same as Phase 4
+| iPhone Connected=true | ✅ | D-Bus: `org.bluez.Device1.Connected` = true |
+| ServicesResolved=true | ✅ | D-Bus: `org.bluez.Device1.ServicesResolved` = true |
+| HFP RFCOMM channel 8 connected | ✅ | `/sys/kernel/debug/bluetooth/rfcomm` shows active session, dlci 16, channel 8 |
+| HFP service-level connection complete | ✅ | Phase E btmon: full AT negotiation completed (BRSF→BAC→CIND→CMER→CHLD→CLIP→CCWA→CMEE→CLCC all OK) |
+| headset-head-unit present or available | ❌ | Phase F: EnumProfile contains only `off` and `audio-gateway` — `headset-head-unit` absent |
+| Active Profile is headset-head-unit | ❌ | Phase F: Active Profile is `audio-gateway` (index 65536) |
+| HFP transport objects exist | ❌ | Phase F: No HFP transport objects |
+| SCO sink/source nodes exist | ❌ | Phase F: No SCO nodes |
+| call=0 | ✅ | Phase E btmon: `+CIND: 1,0,0,5,2,0,0` (call=0) |
+| callsetup=0 | ✅ | Phase E btmon: `+CIND: 1,0,0,5,2,0,0` (callsetup=0) |
+| callheld=0 | ✅ | Phase E btmon: `+CIND: 1,0,0,5,2,0,0` (callheld=0) |
 
 ## Classification
 
-`HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED` — Whether the current WirePlumber process registered /Profile/HFPHF is unknown. Whether ConnectProfile(111f) triggers RFCOMM is untested.
+`HFP_SLC_NOT_REFLECTED_IN_CONNECTED_PROFILES` — The HFP service-level control negotiation is verified at the HCI level (RFCOMM channel 8 established, full AT negotiation completed, no disconnect observed). However, `headset-head-unit` is absent from the PipeWire EnumProfile. The active Profile parameter is `audio-gateway` (Pi-as-AG), which does not provide HFP hands-free audio.
 
 ## Recommended next action
 
-Phase A: Prove current HFP registration via WirePlumber restart with D-Bus capture. Then Phase B–E.
+Enable temporary detailed SPA Bluetooth logging for one controlled reconnection to determine why `headset-head-unit` is absent from EnumProfile despite the completed SLC. The exact logging method, risk, and rollback must be shown before execution.
