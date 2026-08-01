@@ -72,9 +72,10 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 ### Local Pi Registration (from D-Bus trace)
 
-- Local HFP HF (`0000111e`) registered at `/Profile/HFPHF` — `VERIFIED_AUTOMATED`
-- Local HFP AG (`0000111f`) registered at `/Profile/HFPAG` — `VERIFIED_AUTOMATED`
-- Both profiles accepted by BlueZ with no errors
+- Local HFP HF (`0000111e`) registered at `/Profile/HFPHF` — `VERIFIED_AUTOMATED` (old WirePlumber instance only)
+- Local HFP AG (`0000111f`) registered at `/Profile/HFPAG` — `VERIFIED_AUTOMATED` (old WirePlumber instance only)
+- After bluetoothd + wireplumber restart: 0 Profile1 interfaces registered — `VERIFIED_AUTOMATED`
+- WirePlumber registers A2DP MediaEndpoints but NOT HFP Profile1 interfaces — `VERIFIED_AUTOMATED`
 
 ### PipeWire Profile Enumeration
 
@@ -103,9 +104,28 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 `VERIFIED_AUTOMATED`: `headset-head-unit` does not appear in EnumProfile after connection
 `VERIFIED_AUTOMATED`: No HFP transport or SCO objects created
 
-### Failure Layer (final)
+### HFP Isolation Test Results
 
-`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED` — BlueZ correctly invokes `/Profile/HFPHF/NewConnection` and delivers the RFCOMM fd to WirePlumber. But WirePlumber's spa-bluez5 does not activate the native HFP backend because `bluez5.hfphsp-backend = native` is NOT set in the default config. Without this, WirePlumber receives the RFCOMM fd but cannot process it into a `headset-head-unit` profile. The previous classification of `BLUEZ_PROFILE_MATCHING_FAILURE` was incorrect — the callback IS delivered. The fix is to enable `bluez5.hfphsp-backend = native` in `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf`.
+`VERIFIED_AUTOMATED`: `bluez5.roles=[hfp_hf]` isolation fragment causes Bluetooth device to disappear from PipeWire entirely — no bluez5 device in `wpctl status` or `pw-cli ls Device`.
+
+`VERIFIED_AUTOMATED`: After bluetoothd + WirePlumber restart, 0 Profile1 interfaces registered. WirePlumber only registers A2DP MediaEndpoints (ldac, aptx_hd, aptx, sbc, etc.) but NOT HFP Profile1 interfaces.
+
+`VERIFIED_AUTOMATED`: `RegisterProfile(111e)` fails with "UUID already registered" — stale registration persists across bluetoothd restart. BlueZ internal state retains the registration even after process restart.
+
+`VERIFIED_AUTOMATED`: D-Bus `method_return` from WirePlumber to bluetoothd rejected — "0 matched rules". `requested_reply="0"` indicates D-Bus daemon does not recognize this as a reply to an incoming method call.
+
+### Failure Layer
+
+`HFP_CONTROL_CONNECTED_PIPEWIRE_AUDIO_PROFILE_MISSING` — BlueZ correctly invokes `/Profile/HFPHF/NewConnection` and delivers the RFCOMM fd to WirePlumber. HFP AT negotiation completes successfully (Pi sends HF commands, iPhone responds as AG). But `headset-head-unit` does not appear in PipeWire EnumProfile and no HFP transport is created.
+
+#### Superseded classifications (do not cite)
+
+- ~~`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED`~~ — withdrawn. Based on (1) malformed fragment syntax (`["bluez5.hfphsp-backend"]` Lua-table key syntax instead of SPA-JSON) and (2) the incorrect assumption that the native backend was not running. Successful AT negotiation indicates the native backend was already active. The official default for `bluez5.hfphsp-backend` is already `native`. The malformed fragment test did not prove the hypothesis.
+- ~~`BLUEZ_PROFILE_MATCHING_FAILURE`~~ — withdrawn. The NewConnection callback IS delivered at the correct path.
+
+#### Neutral classification
+
+`HFP_CONTROL_CONNECTED_PIPEWIRE_AUDIO_PROFILE_MISSING` — HFP Hands-Free service-level connection succeeds but `headset-head-unit` is absent from PipeWire EnumProfile. No HFP transport or SCO nodes are created. The failure could be at the profile construction layer, transport creation layer, or the expectation about profile availability timing.
 
 ### Previous Configuration Issues (resolved)
 
@@ -113,13 +133,19 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 - `~/.config/wireplumber/main.lua.d/51-bluez-hfp.lua.disabled` — WirePlumber 0.4 Lua format
 - `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf.disabled` — quoted-string `bluez5.roles` syntax
 - `~/.config/wireplumber/wireplumber.conf.d/90-analogconnect-hfp-test.conf` — removed
+- `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf` — malformed (Lua-table key syntax). Removed → `.invalid-disabled`.
+- `~/.config/wireplumber/wireplumber.conf.d/90-analogconnect-hfp-isolation.conf` — caused device disappearance. Removed.
 
 ## Blockers
 
 1. ~~iPhone not trusted~~ — RESOLVED
 2. ~~obexd not installed~~ — imsg uses own OBEX, works fine
 3. ~~Bluetooth group~~ — active in current session
-4. **`bluez5.hfphsp-backend` not configured** — WirePlumber receives RFCOMM fd but doesn't activate HFP backend
+4. ~~`bluez5.hfphsp-backend` not configured~~ — SUPERSCEEDED. Default is already `native`.
+5. **WirePlumber does NOT register HFP Profile1 interfaces after restart** — only A2DP MediaEndpoints registered. `VERIFIED_AUTOMATED`.
+6. **Stale BlueZ UUID `111e` registration** — persists across bluetoothd restart, blocks manual re-registration. `VERIFIED_AUTOMATED`.
+7. **`bluez5.roles=[hfp_hf]` causes device disappearance** — cannot use isolation fragment for testing. `VERIFIED_AUTOMATED`.
+8. **D-Bus policy rejects WirePlumber method_returns** — "0 matched rules" for method_return to bluetoothd. `VERIFIED_AUTOMATED`.
 
 ## Key Findings
 
@@ -130,14 +156,16 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 5. imsg connects via its own OBEX implementation (bluer crate)
 6. MAP channel: RFCOMM 2, PBAP channel: RFCOMM 13
 7. iPhone advertises HFP AG (`111f`) — correct for Pi acting as hands-free
-8. WirePlumber native backend registers both HF and AG with BlueZ — `VERIFIED_AUTOMATED`
-9. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG)
-10. Custom WirePlumber config fragments with quoted-string `bluez5.roles` are rejected
-11. `override.bluez5.roles = [ hfp_hf ]` had no effect on EnumProfile
-12. Explicit `ConnectProfile(111f)` succeeds — HFP RFCOMM connection established
-13. HFP AT negotiation completes successfully — all commands return OK
-14. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber receives RFCOMM fd — `VERIFIED_AUTOMATED`
-15. `bluez5.hfphsp-backend` NOT set in default config — spa-bluez5 doesn't activate HFP backend
-16. HFP RFCOMM and AT negotiation succeed — connection is established at Bluetooth level
-17. MAP and PBAP remain functional after HFP connection attempt
-18. Fix: enable `bluez5.hfphsp-backend = native` in `/etc/wireplumber/wireplumber.conf.d/`
+8. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG)
+9. Explicit `ConnectProfile(111f)` succeeds — HFP RFCOMM connection established
+10. HFP AT negotiation completes successfully — all commands return OK
+11. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber receives RFCOMM fd — `VERIFIED_AUTOMATED` (old instance only)
+12. After clean restart: WirePlumber registers A2DP MediaEndpoints but NOT HFP Profile1 interfaces — `VERIFIED_AUTOMATED`
+13. After clean restart: 0 Profile1 interfaces in ObjectManager — `VERIFIED_AUTOMATED`
+14. `bluez5.roles=[hfp_hf]` causes Bluetooth device to disappear from PipeWire entirely — `VERIFIED_AUTOMATED`
+15. Stale UUID `111e` registration persists across bluetoothd restart — `VERIFIED_AUTOMATED`
+16. D-Bus rejects WirePlumber method_returns to bluetoothd — "0 matched rules" — `VERIFIED_AUTOMATED`
+17. Malformed system fragment removed — was using Lua-table key syntax in SPA-JSON context
+18. `HFP_CONTROL_CONNECTED_PIPEWIRE_AUDIO_PROFILE_MISSING` — current neutral classification
+19. Previous `PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED` diagnosis withdrawn — default is already `native`
+20. Native backend and `hfp_hf` role are WirePlumber 0.5 defaults — no explicit config needed
