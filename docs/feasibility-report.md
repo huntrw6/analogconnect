@@ -16,13 +16,13 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 | PBAP test contact | `VERIFIED_HARDWARE` | Contact names and handles visible | MH-PBAP-001 | |
 | PBAP phone number | NOT TESTED | Not attempted | — | Requires --get with handle |
 | PBAP E.164 normalization | NOT TESTED | Not attempted | — | |
-| HFP call event | UNKNOWN | SLC works but no incoming call tested — blocked by EnumProfile absence | — | Need incoming-call test after profile activation |
-| HFP answer | UNKNOWN | Not tested — blocked by EnumProfile absence | — | |
-| HFP hangup | UNKNOWN | Not tested — blocked by EnumProfile absence | — | |
-| HFP dial | UNKNOWN | Not tested — blocked by EnumProfile absence | — | |
-| HFP DTMF | UNKNOWN | Not tested — blocked by EnumProfile absence | — | |
-| SCO speaker audio | UNKNOWN | No SCO nodes exist — blocked by EnumProfile absence | — | |
-| SCO microphone audio | UNKNOWN | No SCO nodes exist — blocked by EnumProfile absence | — | |
+| HFP call event | UNKNOWN | SLC works, control plane ready — need active-call test | — | Phase I required |
+| HFP answer | UNKNOWN | Not tested — need active-call test | — | Phase I required |
+| HFP hangup | UNKNOWN | Not tested — need active-call test | — | Phase I required |
+| HFP dial | UNKNOWN | Not tested — need active-call test | — | Phase I required |
+| HFP DTMF | UNKNOWN | Not tested — need active-call test | — | Phase I required |
+| SCO speaker audio | UNKNOWN | No SCO nodes while idle — expected, may appear during call | — | Phase I required |
+| SCO microphone audio | UNKNOWN | No SCO nodes while idle — expected, may appear during call | — | Phase I required |
 | Profile coexistence | UNKNOWN | Not tested | — | |
 | Automatic reconnection | UNKNOWN | Not tested | — | |
 
@@ -117,10 +117,12 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 `VERIFIED_AUTOMATED`: `Connected` = true (D-Bus property, Phase F)
 `VERIFIED_AUTOMATED`: `bluez5.hfphsp-backend` NOT set in default WirePlumber config
 `CURRENT_NEWCONNECTION_NOT_CAPTURED`: Phase E D-Bus monitor started 37 seconds after RFCOMM establishment — NewConnection callback not captured
-`VERIFIED_AUTOMATED`: Phase F: `headset-head-unit` is absent from PipeWire EnumProfile
-`VERIFIED_AUTOMATED`: Phase F: Active Profile is `audio-gateway` (index 65536) — not `headset-head-unit`
-`VERIFIED_AUTOMATED`: Phase F: No HFP transport objects exist
-`VERIFIED_AUTOMATED`: Phase F: No SCO sink or source nodes exist
+`VERIFIED_AUTOMATED`: Phase H: `headset-head-unit` is absent from PipeWire EnumProfile — correct per source analysis (Pi-as-HF maps to `SPA_BT_PROFILE_HFP_AG` → `SPA_BT_PROFILE_HEADSET_AUDIO_GATEWAY`)
+`VERIFIED_AUTOMATED`: Phase H: Active Profile is `audio-gateway` (index 65536)
+`VERIFIED_AUTOMATED`: Phase H: No HFP transport objects exist in post-test PipeWire state — expected while idle
+`VERIFIED_AUTOMATED`: Phase H: No SCO sink or source nodes exist in post-test PipeWire state — expected while idle
+`VERIFIED_AUTOMATED`: Phase H: `telephony_ag_register` called — AudioGateway registered
+`VERIFIED_AUTOMATED`: Phase H: call=0, callsetup=0, callheld=0
 
 ### HFP Isolation Test Results
 
@@ -130,7 +132,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 ### Failure Layer
 
-`HFP_SLC_NOT_REFLECTED_IN_CONNECTED_PROFILES` — The HFP service-level control negotiation is verified at the HCI level (RFCOMM channel 8 established, full AT negotiation completed, no disconnect observed). However, `headset-head-unit` is absent from the PipeWire EnumProfile. The active Profile parameter is `audio-gateway` (Pi-as-AG), which does not provide HFP hands-free audio.
+`HFP_CONTROL_CHANNEL_READY_FOR_ACTIVE_CALL_TEST` — The HFP control plane is fully established. AT SLC completed successfully (all AT commands exchanged and acknowledged). RFCOMM alive, call indicators synchronized, `audio-gateway` profile present. The Service Level Connection and Audio Connection are separate procedures. No Audio Connection was requested during idle testing. The active-call test is required to determine whether the iPhone and PipeWire complete codec and synchronous connection setup.
 
 #### Superseded classifications (do not cite)
 
@@ -145,10 +147,13 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 - ~~`BLOCKED`~~ — withdrawn. The classification `BLOCKED` was based on unsupported claims about D-Bus method_return rejection preventing Profile1 registration and ConnectProfile role mismatch.
 - ~~`HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED`~~ — superseded. Registration is now verified, RFCOMM is established, SLC is complete.
 - ~~"bluez5.profile=off proves active profile is off"~~ — withdrawn. `bluez5.profile` is a device property describing an initial profile preference. It is NOT the authoritative active-profile state.
+- ~~`HFP_SLC_NOT_REFLECTED_IN_CONNECTED_PROFILES`~~ — superseded. Phase H proved the SLC completes successfully and the control plane is ready.
+- ~~`HFP_SLC_COMPLETED_BUT_NO_CODEC_NEGOTIATION`~~ — withdrawn. Idle lack of codec negotiation is expected behavior, not a failure.
+- ~~`HFP_CURRENT_OWNER_ACCEPTS_BUT_PIPELINE_INACTIVE`~~ — superseded. Phase H proved the AT SLC completes successfully.
 
 #### Current classification
 
-`HFP_SLC_NOT_REFLECTED_IN_CONNECTED_PROFILES` — The HFP service-level control negotiation is verified at the HCI level (RFCOMM channel 8 established, full AT negotiation completed, no disconnect observed). However, `headset-head-unit` is absent from the PipeWire EnumProfile. The active Profile parameter is `audio-gateway` (Pi-as-AG), which does not provide HFP hands-free audio.
+`HFP_CONTROL_CHANNEL_READY_FOR_ACTIVE_CALL_TEST` — The HFP control plane is fully established. AT SLC completed successfully (all AT commands exchanged and acknowledged). RFCOMM alive, call indicators synchronized, `audio-gateway` profile present. The Service Level Connection and Audio Connection are separate procedures. No Audio Connection was requested during idle testing. The active-call test is required to determine whether the iPhone and PipeWire complete codec and synchronous connection setup.
 
 ### Previous Configuration Issues (resolved)
 
@@ -165,12 +170,12 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 2. ~~obexd not installed~~ — imsg uses own OBEX, works fine
 3. ~~Bluetooth group~~ — active in current session
 4. ~~`bluez5.hfphsp-backend` not configured~~ — SUPERSCEEDED. Default is already `native`.
-5. **`headset-head-unit` EnumProfile absent** — The EnumProfile contains only `off` and `audio-gateway`. No HFP hands-free profile is available. This blocks the incoming-call test.
-6. **No HFP transport objects** — No BlueZ HFP transport exists in PipeWire
-7. **No SCO nodes** — No SCO sink or source nodes exist
-8. **SCO connection reset by iPhone** (from Phase 4) — headset-head-unit appears, SCO transport created, but SCO link fails (-104)
-9. **A2DP SET_CONFIGURATION rejected** — iPhone rejected initial A2DP codec negotiation
-10. **`headset-head-unit` absent from EnumProfile** — Despite RFCOMM+SLC being established, the HFP profile is not reflected in PipeWire
+5. ~~`headset-head-unit` EnumProfile absent~~ — EXPECTED. Pi-as-HF maps to `SPA_BT_PROFILE_HFP_AG` → `SPA_BT_PROFILE_HEADSET_AUDIO_GATEWAY`. `headset-head-unit` requires `SPA_BT_PROFILE_HFP_HF` (Pi-as-AG).
+6. ~~No HFP transport objects~~ — EXPECTED while idle. May appear when audio is requested.
+7. ~~No SCO nodes~~ — EXPECTED while idle. May appear when audio is routed to the Pi.
+8. ~~SCO connection reset by iPhone~~ — Phase 4 observation. Phase I will determine if this recurs during active call.
+9. **A2DP SET_CONFIGURATION rejected** — iPhone rejected initial A2DP codec negotiation (separate from HFP)
+10. **Active-call test required** — Need incoming-call test to determine if iPhone initiates codec setup and SCO during call
 
 ## Key Findings
 
@@ -181,10 +186,10 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 5. imsg connects via its own OBEX implementation (bluer crate)
 6. MAP channel: RFCOMM 2, PBAP channel: RFCOMM 13
 7. iPhone advertises HFP AG (`111f`) — correct for Pi acting as hands-free
-8. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG)
+8. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG) — correct per source analysis
 9. Explicit `ConnectProfile(111f)` returns success — HFP RFCOMM connection established
-10. HFP AT negotiation completes successfully — all commands return OK
-11. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber received RFCOMM fd (earlier instance)
+10. HFP AT SLC completes successfully — all commands return OK (Phase H: full WirePlumber trace)
+11. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber received RFCOMM fd and accepted it
 12. `bluez5.roles=[hfp_hf]` absence before HFP connection is expected behavior, not proof of failure
 13. Profile1 objects are client-owned — not visible in BlueZ ObjectManager
 14. One-shot busctl RegisterProfile does not persist — registration removed when caller exits
@@ -197,10 +202,14 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 21. **Phase E**: After bluetoothd restart, RFCOMM established (SABM TX, UA received), full AT negotiation completed (BRSF→BAC→CIND→CMER→CHLD→CLIP→CCWA→CMEE→CLCC all OK)
 22. **Phase E**: D-Bus RegisterProfile calls captured for both HF (0x111e) and AG (0x111f) — no error
 23. **Phase E**: D-Bus `br-connection-unknown` error observed at reply_serial=34 — not correlated to RegisterProfile
-24. **Phase F**: `headset-head-unit` is absent from EnumProfile — only `off` and `audio-gateway` present
-25. **Phase F**: Active Profile is `audio-gateway` (index 65536) — Pi configured as AG, not HF
-26. **Phase F**: No HFP transport objects, no SCO nodes
-27. **Phase F**: RFCOMM alive in `/sys/kernel/debug/bluetooth/rfcomm` — dlci 16, channel 8, mtu 1015
-28. **Phase F**: `ServicesResolved` = true, `Connected` = true (D-Bus properties)
-29. **Phase F**: `bluez5.profile` is NOT the authoritative active-profile state — EnumProfile and Profile parameters are authoritative
-30. **Phase F**: NewConnection NOT captured in Phase E D-Bus monitor — monitor started 37 seconds after RFCOMM establishment
+24. **Phase H**: AT SLC completed successfully with full WirePlumber trace — all 10 AT commands exchanged and acknowledged
+25. **Phase H**: `telephony_ag_register` called — AudioGateway registered
+26. **Phase H**: call=0, callsetup=0, callheld=0 — indicators synchronized
+27. **Phase H**: RFCOMM remained connected after SLC — control plane ready
+28. **Phase H**: No HFP transport in post-test PipeWire state — expected while idle
+29. **Phase H**: No SCO source or sink in post-test PipeWire state — expected while idle
+30. **Phase H**: Service Level Connection and Audio Connection are separate procedures
+31. **Phase H**: Codec negotiation and SCO are initiated only when audio is needed
+32. **Phase H**: Idle lack of `+BCS` is expected behavior, not a failure
+33. **Phase F**: `bluez5.profile` is NOT the authoritative active-profile state — EnumProfile and Profile parameters are authoritative
+34. **Phase F**: NewConnection NOT captured in Phase E D-Bus monitor — monitor started 37 seconds after RFCOMM establishment

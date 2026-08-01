@@ -2,20 +2,32 @@
 
 ## Summary
 
-**Classification: `HFP_SLC_COMPLETED_BUT_NO_CODEC_NEGOTIATION`**
+**Classification: `HFP_CONTROL_CHANNEL_READY_FOR_ACTIVE_CALL_TEST`**
 
-The AT Service Level Connection (SLC) completed successfully with full WirePlumber trace logging. All AT commands were exchanged and acknowledged. However, the iPhone AG did not initiate codec negotiation (`AT+BCS`), so `rfcomm_new_transport()` was never called and no HFP transport was created.
+The AT Service Level Connection (SLC) completed successfully with full WirePlumber trace logging. All AT commands were exchanged and acknowledged. The HFP control plane is fully established and ready for an active-call test.
+
+The Service Level Connection and Audio Connection are separate procedures. No Audio Connection was requested during this idle test. The absence of unsolicited codec-selection responses during idle is expected behavior — codec negotiation and SCO are initiated only when audio is needed.
 
 ## Evidence Labels
 
 | Finding | Label |
 |---------|-------|
-| AT SLC completed (all AT commands exchanged) | `VERIFIED_AUTOMATED` |
-| WirePlumber trace log captured full AT exchange | `VERIFIED_AUTOMATED` |
-| iPhone BRSF:4079 with codec negotiation bit set | `VERIFIED_AUTOMATED` |
-| No `rfcomm_new_transport` called | `VERIFIED_AUTOMATED` |
-| No HFP transport in PipeWire | `VERIFIED_AUTOMATED` |
-| iPhone AG defers AT+BCS until call audio needed | `INFERRED` |
+| Fresh NewConnection reached current WirePlumber | `VERIFIED_AUTOMATED` |
+| WirePlumber accepted the RFCOMM descriptor | `VERIFIED_AUTOMATED` |
+| AT+BRSF completed | `VERIFIED_AUTOMATED` |
+| AT+BAC completed | `VERIFIED_AUTOMATED` |
+| AT+CIND=? completed | `VERIFIED_AUTOMATED` |
+| AT+CIND? completed | `VERIFIED_AUTOMATED` |
+| AT+CMER completed | `VERIFIED_AUTOMATED` |
+| AT+CHLD completed | `VERIFIED_AUTOMATED` |
+| AT+CLIP completed | `VERIFIED_AUTOMATED` |
+| AT+CCWA completed | `VERIFIED_AUTOMATED` |
+| AT+CMEE completed | `VERIFIED_AUTOMATED` |
+| AT+CLCC completed | `VERIFIED_AUTOMATED` |
+| call=0, callsetup=0, callheld=0 | `VERIFIED_AUTOMATED` |
+| RFCOMM remained connected | `VERIFIED_AUTOMATED` |
+| No HFP transport in post-test PipeWire state | `VERIFIED_AUTOMATED` |
+| No SCO source or sink in post-test PipeWire state | `VERIFIED_AUTOMATED` |
 | `headset-head-unit` not expected for Pi-as-HF | `DOCUMENTED` |
 
 ## AT SLC Sequence (from WirePlumber trace log)
@@ -42,45 +54,50 @@ RFCOMM >> AT+CLCC               → OK
 
 The full AT SLC sequence was captured with WirePlumber trace logging (`wpctl set-log-level T`). Every AT command received a valid response from the iPhone AG. `telephony_ag_register` was called after AT+CHLD completed.
 
-### 2. No Codec Negotiation Initiated
+### 2. HFP Control Plane Fully Established
 
-After AT+CLCC → OK, the iPhone AG did NOT send `AT+BCS=n` to select a codec. This is the critical gap:
+The following were all verified:
+- `Connected=true`
+- `ServicesResolved=true`
+- Current WirePlumber owns the HFP RFCOMM connection
+- SLC complete
+- Call indicators synchronized (call=0, callsetup=0, callheld=0)
+- RFCOMM alive
+- `audio-gateway` profile present
 
-- The Pi (HF) sent `AT+BAC=1,2,3` indicating support for CVSD, mSBC, and LC3
-- The iPhone (AG) acknowledged with OK
-- But the iPhone never followed up with `AT+BCS` to select a codec
-- Therefore `rfcomm_new_transport()` was never called
-- Therefore no HFP transport was created in PipeWire
+### 3. No Audio Connection Requested
 
-### 3. Why rfcomm_new_transport Was Never Called
+The Service Level Connection and Audio Connection are separate procedures. No Audio Connection was requested during this idle test. The AG may initiate codec setup (`+BCS:<codec>`) without receiving `AT+BCC`. Either the AG or the HF can trigger codec selection — both are valid per the HFP specification.
 
-In `backend-native.c`, `rfcomm_new_transport()` is called from `rfcomm_hfp_hf()` (line 1941) when:
-- The iPhone sends `+BCS:n` (codec selection response)
-- The Pi sends `AT+BCS=n` in response
+The absence of unsolicited codec-selection responses during idle is expected behavior. Codec negotiation and SCO/eSCO are initiated only when audio is actually needed (e.g., during an incoming or outgoing call).
 
-Neither event occurred. The iPhone deferred codec negotiation.
-
-### 4. PipeWire Profile State Unchanged
+### 4. PipeWire Profile State
 
 - EnumProfile: `off` + `audio-gateway` (no `headset-head-unit` — correct per source analysis)
 - Active Profile: `audio-gateway`
-- No SCO nodes, no HFP transport nodes
+- No SCO nodes, no HFP transport nodes in post-test PipeWire state
 - RFCOMM DLC active: DLCI 16, MTU 1015, DCNT 26 bytes sent, 245 bytes received
 
-### 5. iPhone AG Behavior
+### 5. What May Appear During Active Call
 
-The iPhone BRSF:4079 indicates codec negotiation is supported (bit 9 set). The `device_supports_codec` confirmed `has msbc/esco transport`. But the iPhone chose not to initiate codec negotiation during idle SLC establishment. This appears to be by design — the iPhone defers SCO audio setup until call audio is actually needed.
+Do not require before the call:
+- `headset-head-unit` — may appear only when a remote device connects to our AG profile
+- An HFP audio transport — may be created only when audio is requested
+- SCO nodes — may appear only when audio is routed to the Pi
+- `+BCS` — may be sent only when the AG initiates codec selection
 
 ## Implications
 
-1. **SCO is intentionally deferred**: The iPhone does not set up SCO audio during idle SLC establishment
-2. **Call trigger required**: Codec negotiation (and therefore SCO setup) likely requires an actual call event (incoming/outgoing)
-3. **No WirePlumber bug**: The WirePlumber code correctly handles `+BCS` when received; the issue is that the iPhone never sends it
+1. **Control plane ready**: The HFP control channel is fully established and ready for an active-call test
+2. **Audio connection separate**: Codec negotiation and SCO setup are separate from the SLC and are triggered by call events
+3. **No WirePlumber bug**: The WirePlumber code correctly handles `+BCS` when received; the AG sends it when audio is needed
 4. **`audio-gateway` profile is correct**: The Pi acts as HF connecting to iPhone's AG profile
 
 ## btmon Note
 
 btmon was started but the btsnoop file was only 400 bytes (header only). The btmon process died before capturing RFCOMM traffic. The WirePlumber system journal (`journalctl _PID=<WP_PID>`) provided the complete AT exchange trace instead.
+
+The captured logs did not contain evidence of transport creation, but log-text absence does not prove that `rfcomm_new_transport()` never executed unless the exact installed source has an unconditional log statement inside every invocation.
 
 ## Files
 

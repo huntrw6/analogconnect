@@ -4,16 +4,16 @@
 Milestone 0
 
 ## Current phase
-Phase G — Current-Owner Connection Test (complete)
+Phase I — Active Call and SCO Test (pending user approval)
 
 ## Current objective
-Determine whether the current WirePlumber process can receive a fresh NewConnection and add `headset-head-unit` to PipeWire EnumProfile. The answer is: WirePlumber receives and accepts NewConnection, but the HFP pipeline does not activate.
+Run one controlled incoming-call test to determine whether the iPhone sends incoming-call indicators over the established SLC, initiates codec connection setup when call audio is routed to the Pi, sends unsolicited `+BCS:<codec>`, establishes SCO/eSCO, provides bidirectional call audio, and cleanly removes SCO after hangup while retaining RFCOMM.
 
 ## Current classification
-`HFP_CURRENT_OWNER_ACCEPTS_BUT_PIPELINE_INACTIVE`
+`HFP_CONTROL_CHANNEL_READY_FOR_ACTIVE_CALL_TEST`
 
 ## Last completed action
-Phase G1-G7: Complete current-owner connection test. DisconnectProfile removed old RFCOMM, ConnectProfile created fresh RFCOMM, NewConnection delivered to `:1.885` (current WirePlumber PID 298021) and accepted. RFCOMM active at kernel level but no AT SLC completed, no HFP transport created, no `headset-head-unit` EnumProfile. This refutes the earlier `HFP_RFCOMM_PRECEDES_CURRENT_WIREPLUMBER_REGISTRATION` hypothesis.
+Phase H: Complete HFP profile cycle with all monitors active. AT SLC completed successfully (all 10 AT commands exchanged and acknowledged). WirePlumber trace log captured full AT sequence. HFP control plane fully established. No Audio Connection was requested during idle test — expected behavior.
 
 ## Evidence
 
@@ -25,33 +25,42 @@ Phase G1-G7: Complete current-owner connection test. DisconnectProfile removed o
 - `VERIFIED_AUTOMATED`: `ServicesResolved` is true (D-Bus property, current session)
 - `VERIFIED_AUTOMATED`: WirePlumber (PID 298021, sender `:1.885`) registered `/Profile/HFPHF` (UUID 0x111e) and `/Profile/HFPAG` (UUID 0x111f) — Phase E D-Bus capture
 - `VERIFIED_AUTOMATED`: Phase E btmon shows RFCOMM SABM sent by LOCAL Pi (TX), UA received — Pi initiated RFCOMM to iPhone AG service
-- `VERIFIED_AUTOMATED`: Phase E btmon shows full AT negotiation: AT+BRSF=695→+BRSF:4079, AT+BAC=1,2,3, AT+CIND=?, AT+CIND?=1,0,0,5,2,0,0, AT+CMER=3,0,0,1, AT+CHLD=?, AT+CLIP=1, AT+CCWA=1, AT+CMEE=1, AT+CLCC — all OK
+- `VERIFIED_AUTOMATED`: Phase H: Fresh NewConnection reached current WirePlumber process (`:1.885`)
+- `VERIFIED_AUTOMATED`: Phase H: WirePlumber accepted the RFCOMM descriptor
+- `VERIFIED_AUTOMATED`: Phase H: AT+BRSF completed — `+BRSF:4079`
+- `VERIFIED_AUTOMATED`: Phase H: AT+BAC=1,2,3 completed
+- `VERIFIED_AUTOMATED`: Phase H: AT+CIND=? completed — 7 indicators mapped
+- `VERIFIED_AUTOMATED`: Phase H: AT+CIND? completed — `+CIND: 1,0,0,4,2,0,0`
+- `VERIFIED_AUTOMATED`: Phase H: AT+CMER=3,0,0,1 completed
+- `VERIFIED_AUTOMATED`: Phase H: AT+CHLD=? completed — `+CHLD: (0,1,1x,2,2x,3)`
+- `VERIFIED_AUTOMATED`: Phase H: AT+CLIP=1 completed
+- `VERIFIED_AUTOMATED`: Phase H: AT+CCWA=1 completed
+- `VERIFIED_AUTOMATED`: Phase H: AT+CMEE=1 completed
+- `VERIFIED_AUTOMATED`: Phase H: AT+CLCC completed
+- `VERIFIED_AUTOMATED`: Phase H: call=0, callsetup=0, callheld=0
+- `VERIFIED_AUTOMATED`: Phase H: RFCOMM remained connected after SLC
+- `VERIFIED_AUTOMATED`: Phase H: `telephony_ag_register` called — AudioGateway registered
 - `VERIFIED_AUTOMATED`: `/sys/kernel/debug/bluetooth/rfcomm` shows active RFCOMM session to iPhone channel 8, dlci 16, mtu 1015
 - `VERIFIED_AUTOMATED`: Phase G4: `DisconnectProfile("0000111f-...")` successfully removes RFCOMM session
 - `VERIFIED_AUTOMATED`: Phase G6: `ConnectProfile("0000111f-...")` successfully creates fresh RFCOMM session
 - `VERIFIED_AUTOMATED`: Phase G6: D-Bus monitor captured `NewConnection` delivered to `Destination=:1.885` (current WirePlumber) on `/Profile/HFPHF`, accepted with method_return success (3ms)
-- `VERIFIED_AUTOMATED`: Phase G6: After NewConnection acceptance, RFCOMM active (DLCI 16, MTU 1015) but NO HCI traffic visible — AT SLC did not complete
-- `VERIFIED_AUTOMATED`: Phase G7: PipeWire EnumProfile unchanged — `headset-head-unit` STILL ABSENT after fresh connection
-- `VERIFIED_AUTOMATED`: Phase G7: No HFP transport objects, no SCO sink/source nodes
-- `DOCUMENTED`: Profile mapping: `path_to_profile("/Profile/HFPHF")` → `SPA_BT_PROFILE_HFP_AG` → `SPA_BT_PROFILE_HEADSET_AUDIO_GATEWAY`. The `headset-head-unit` EnumProfile requires `SPA_BT_PROFILE_HEADSET_HEAD_UNIT = SPA_BT_PROFILE_HSP_HS | SPA_BT_PROFILE_HFP_HF`, which is only set when a remote device connects to our AG profile.
 - `VERIFIED_AUTOMATED`: Phase 4 restart: `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — headset-head-unit DID appear and SCO transport was created, but SCO link was reset by iPhone
 - `VERIFIED_AUTOMATED`: Phase 4 restart: A2DP `SET_CONFIGURATION request rejected: Configuration not supported (41)` — iPhone rejected initial A2DP codec negotiation
+- `DOCUMENTED`: Profile mapping: `path_to_profile("/Profile/HFPHF")` → `SPA_BT_PROFILE_HFP_AG` → `SPA_BT_PROFILE_HEADSET_AUDIO_GATEWAY`. The `headset-head-unit` EnumProfile requires `SPA_BT_PROFILE_HEADSET_HEAD_UNIT = SPA_BT_PROFILE_HSP_HS | SPA_BT_PROFILE_HFP_HF`, which is only set when a remote device connects to our AG profile.
+- `DOCUMENTED`: Service Level Connection and Audio Connection are separate procedures. Codec negotiation and SCO are initiated only when audio is needed.
+
+### Post-Phase H PipeWire State
+
+- `VERIFIED_AUTOMATED`: No HFP transport was present in the post-test PipeWire state
+- `VERIFIED_AUTOMATED`: No SCO source or sink was present in the post-test PipeWire state
+- These are expected possibilities while idle — they may appear only when audio is requested
 
 ### Corrected (previous claim withdrawn)
 
-- ~~`HFP_RFCOMM_PRECEDES_CURRENT_WIREPLUMBER_REGISTRATION`~~ — **REFUTED**. Phase G proved the current WirePlumber DOES receive and accept NewConnection. The RFCOMM timing is not the cause.
-- ~~`HFP_SLC_NOT_REFLECTED_IN_CONNECTED_PROFILES`~~ — **SUPERSEDED**. The SLC from Phase E is reflected in `connected_profiles` (the `audio-gateway` EnumProfile is active). The issue is that AT SLC does not complete on fresh connections, AND the profile mapping means `SPA_BT_PROFILE_HFP_AG` (Pi-as-HF) does not contribute to `SPA_BT_PROFILE_HEADSET_HEAD_UNIT`.
-- ~~"PipeWire/WirePlumber never transitions the EnumProfile to connected because bluez5.profile remains off"~~ — **WITHDRAWN**. `bluez5.profile` is NOT the authoritative active-profile state.
-- ~~`VERIFIED_AUTOMATED`: `ConnectProfile("0x111f")` returns 0 at D-Bus level but BlueZ never opens RFCOMM channel 8.~~ — **WITHDRAWN**.
-- ~~`VERIFIED_AUTOMATED`: `ConnectProfile("0x111e")` fails with `br-connection-profile-unavailable`.~~ — **WITHDRAWN**. Correct remote UUID is `0x111f`.
-
-### Unknown (insufficient evidence)
-
-- `UNKNOWN`: Whether the AT SLC negotiation completed on the fresh RFCOMM (btmon missed the window)
-- `UNKNOWN`: Whether WirePlumber's backend-native properly registered the RFCOMM FD with its event loop
-- `UNKNOWN`: Whether `headset-head-unit` would appear if the iPhone initiated a connection to our AG profile (UUID 0x111f)
-- `UNKNOWN`: Whether an incoming call would cause profile activation
-- `UNKNOWN`: Why AT SLC does not complete on fresh connections (RFCOMM is established but silent)
+- ~~`HFP_SLC_COMPLETED_BUT_NO_CODEC_NEGOTIATION`~~ — **WITHDRAWN**. Not a failure classification. Idle lack of codec negotiation is expected behavior.
+- ~~`HFP_CURRENT_OWNER_ACCEPTS_BUT_PIPELINE_INACTIVE`~~ — **SUPERSEDED**. Phase H proved the AT SLC completes successfully.
+- ~~`HFP_RFCOMM_PRECEDES_CURRENT_WIREPLUMBER_REGISTRATION`~~ — **REFUTED**. Phase G proved the current WirePlumber DOES receive and accept NewConnection.
+- ~~`HFP_SLC_NOT_REFLECTED_IN_CONNECTED_PROFILES`~~ — **SUPERSEDED**. The SLC is reflected in connected_profiles.
 
 ### Superseded (do not cite as current)
 
@@ -62,39 +71,46 @@ Phase G1-G7: Complete current-owner connection test. DisconnectProfile removed o
 - ~~`HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED`~~ — superseded
 - ~~`HFP_CONTROL_CONNECTION_DROPPED`~~ — superseded
 
-## Current blockers
+## Current state summary
 
-1. **AT SLC does not complete on fresh connections** — RFCOMM is established at kernel level, WirePlumber accepts NewConnection, but no AT exchange is visible. This prevents HFP transport creation.
-2. **Profile mapping prevents `headset-head-unit`** — Pi-as-HF maps to `SPA_BT_PROFILE_HFP_AG` which is part of `SPA_BT_PROFILE_HEADSET_AUDIO_GATEWAY`, not `SPA_BT_PROFILE_HEADSET_HEAD_UNIT`. The `headset-head-unit` EnumProfile requires `SPA_BT_PROFILE_HFP_HF` (Pi-as-AG).
-3. **No HFP transport objects** — No BlueZ HFP transport exists in PipeWire
-4. **No SCO nodes** — No SCO sink or source nodes exist
-5. **A2DP codec negotiation rejected** — `SET_CONFIGURATION request rejected: Configuration not supported (41)`
+```
+Connected=true
+ServicesResolved=true
+Current WirePlumber owns the HFP RFCOMM connection
+SLC complete
+Call indicators synchronized
+RFCOMM alive
+audio-gateway profile present
+```
+
+## Do not require before the call
+
+- `headset-head-unit` — may appear only when a remote device connects to our AG profile
+- An HFP audio transport — may be created only when audio is requested
+- SCO nodes — may appear only when audio is routed to the Pi
+- `+BCS` — the AG sends `+BCS:<codec>` when it initiates codec selection; the HF responds with `AT+BCS=<codec>`
 
 ## Approved system changes
 - Removed malformed system fragment `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf` → `.invalid-disabled`
 - Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
 
 ## Pending user actions
-- None
+- Approve Phase I: Controlled incoming-call and SCO test
 
 ## Next action
-Investigate why AT SLC does not complete on fresh RFCOMM connections. Enable detailed SPA Bluetooth logging (`SPA_DEBUG=1` or `PIPEWIRE_DEBUG=3`) for one controlled reconnection to capture the backend-native AT exchange. Alternatively, investigate whether the RFCOMM FD is properly registered with WirePlumber's event loop.
+Phase I: Controlled incoming-call test. Requires user approval. Second phone to call the iPhone, one known test caller, manual answer and hangup, manual selection of Raspberry Pi as audio route if iOS presents it.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 - MH-MAP-001: PASS (MAP listing, retrieval working)
 - MH-PBAP-001: PASS (PBAP listing working after reconnection)
-- HFP RFCOMM establishment: PASS (Phase E — SABM TX, UA received, channel 8, dlci 16)
-- HFP AT negotiation: PASS (Phase E — all AT commands return OK)
-- HFP SLC alive: PASS (Phase F2 — RFCOMM in debugfs, no disconnect in btmon)
-- HFP NewConnection callback: **VERIFIED** (Phase G — delivered to `:1.885`, accepted)
-- HFP DisconnectProfile/ConnectProfile: **VERIFIED** (Phase G — RFCOMM successfully removed and re-created)
-- HFP EnumProfile: FAIL — `headset-head-unit` absent; only `off` and `audio-gateway`
-- HFP transport: FAIL — no HFP transport objects
-- HFP SCO: FAIL — no SCO nodes
-- HFP AT SLC on fresh connection: FAIL — RFCOMM established but AT exchange not visible
-- Phase 4 WirePlumber restart: PARTIAL (RFCOMM+AT works, but ServicesResolved delayed, SCO fails)
-- Phase 5D incoming-call test: BLOCKED (EnumProfile absent — no HFP audio pathway)
+- HFP RFCOMM establishment: PASS (Phase E, G, H — SABM TX, UA received, channel 8, dlci 16)
+- HFP AT SLC: PASS (Phase H — all AT commands return OK, full WirePlumber trace)
+- HFP SLC alive: PASS (Phase F, H — RFCOMM in debugfs, no disconnect)
+- HFP NewConnection callback: VERIFIED (Phase G, H — delivered to `:1.885`, accepted)
+- HFP DisconnectProfile/ConnectProfile: VERIFIED (Phase G — RFCOMM successfully removed and re-created)
+- HFP control plane: VERIFIED (Phase H — SLC complete, indicators synchronized, RFCOMM alive)
+- HFP incoming-call test: PENDING (Phase I — awaiting user approval)
 
 ## Important decisions
 - imsg works without bluez-obexd — uses own OBEX implementation
@@ -105,10 +121,6 @@ Investigate why AT SLC does not complete on fresh RFCOMM connections. Enable det
 - One-shot busctl RegisterProfile does not persist — registration removed when caller exits
 - `bluez5.profile` is NOT the authoritative active-profile state — EnumProfile and Profile parameters are authoritative
 - Pi-as-HF → `SPA_BT_PROFILE_HFP_AG` → `SPA_BT_PROFILE_HEADSET_AUDIO_GATEWAY` (NOT `HEADSET_HEAD_UNIT`)
-
-## Unresolved questions
-- Why does AT SLC not complete on fresh RFCOMM connections?
-- Is the RFCOMM FD properly registered with WirePlumber's event loop?
-- Would `headset-head-unit` appear if the iPhone initiated a connection to our AG profile?
-- Would an incoming call cause profile activation?
-- Why does A2DP SET_CONFIGURATION keep failing with "Configuration not supported (41)"?
+- Service Level Connection and Audio Connection are separate procedures
+- Codec negotiation and SCO are initiated only when audio is needed
+- Idle lack of +BCS is expected behavior, not a failure
