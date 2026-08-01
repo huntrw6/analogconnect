@@ -97,13 +97,15 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 - `AT+CHLD=?` → `+CHLD: (0,1,1x...)` → OK
 - `AT+CLIP=1` → OK
 
-`INCONCLUSIVE`: `/Profile/HFPHF/NewConnection` — previous monitor used wrong D-Bus path (`/org/bluez/Profile/HFPHF` instead of `/Profile/HFPHF`). Corrected trace pending.
+`VERIFIED_AUTOMATED`: `/Profile/HFPHF/NewConnection` IS invoked by BlueZ — WirePlumber received RFCOMM fd (inode 1091667)
+`VERIFIED_AUTOMATED`: `bluez5.hfphsp-backend` NOT set in default WirePlumber config
+`VERIFIED_AUTOMATED`: `bluez5.profile = "off"` — headset-head-unit not activated
 `VERIFIED_AUTOMATED`: `headset-head-unit` does not appear in EnumProfile after connection
 `VERIFIED_AUTOMATED`: No HFP transport or SCO objects created
 
-### Failure Layer (corrected)
+### Failure Layer (final)
 
-Previous classification `BLUEZ_PROFILE_MATCHING_FAILURE` revised to `PROFILE_CALLBACK_MONITOR_INCONCLUSIVE`. The previous D-Bus monitor filtered on path `/org/bluez/Profile/HFPHF` which differs from the registered path `/Profile/HFPHF`. The callback may have occurred but was not observed. HFP RFCOMM connection and AT negotiation succeeded — this strongly suggests a local HF implementation handled the connection. Corrected trace pending.
+`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED` — BlueZ correctly invokes `/Profile/HFPHF/NewConnection` and delivers the RFCOMM fd to WirePlumber. But WirePlumber's spa-bluez5 does not activate the native HFP backend because `bluez5.hfphsp-backend = native` is NOT set in the default config. Without this, WirePlumber receives the RFCOMM fd but cannot process it into a `headset-head-unit` profile. The previous classification of `BLUEZ_PROFILE_MATCHING_FAILURE` was incorrect — the callback IS delivered. The fix is to enable `bluez5.hfphsp-backend = native` in `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf`.
 
 ### Previous Configuration Issues (resolved)
 
@@ -117,7 +119,7 @@ Previous classification `BLUEZ_PROFILE_MATCHING_FAILURE` revised to `PROFILE_CAL
 1. ~~iPhone not trusted~~ — RESOLVED
 2. ~~obexd not installed~~ — imsg uses own OBEX, works fine
 3. ~~Bluetooth group~~ — active in current session
-4. **HFP callback monitor inconclusive** — previous D-Bus monitor used wrong object path; corrected trace pending
+4. **`bluez5.hfphsp-backend` not configured** — WirePlumber receives RFCOMM fd but doesn't activate HFP backend
 
 ## Key Findings
 
@@ -134,6 +136,8 @@ Previous classification `BLUEZ_PROFILE_MATCHING_FAILURE` revised to `PROFILE_CAL
 11. `override.bluez5.roles = [ hfp_hf ]` had no effect on EnumProfile
 12. Explicit `ConnectProfile(111f)` succeeds — HFP RFCOMM connection established
 13. HFP AT negotiation completes successfully — all commands return OK
-14. Previous HFP callback monitor used wrong D-Bus path — result inconclusive
-15. HFP RFCOMM and AT negotiation succeed — some HF implementation is working
-16. MAP and PBAP remain functional after HFP connection attempt
+14. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber receives RFCOMM fd — `VERIFIED_AUTOMATED`
+15. `bluez5.hfphsp-backend` NOT set in default config — spa-bluez5 doesn't activate HFP backend
+16. HFP RFCOMM and AT negotiation succeed — connection is established at Bluetooth level
+17. MAP and PBAP remain functional after HFP connection attempt
+18. Fix: enable `bluez5.hfphsp-backend = native` in `/etc/wireplumber/wireplumber.conf.d/`
