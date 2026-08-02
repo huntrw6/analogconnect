@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: AnalogConnect Local Control API
   version: 1.0.0
-  description: Initial hardware-free health and status contract.
+  description: Privacy-safe local health, status, and aggregate contact contract.
 servers:
   - url: http://127.0.0.1:8787
     description: Loopback development server only
@@ -27,6 +27,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemStatus"
+  /api/v1/contacts/summary:
+    get:
+      operationId: getContactSummary
+      description: Returns aggregate synchronization metadata and never contact names or numbers.
+      responses:
+        "200":
+          description: Privacy-safe local contact summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactSummary"
 components:
   schemas:
     HealthResponse:
@@ -102,3 +113,20 @@ components:
         summary:
           type: string
           description: Privacy-safe operator-facing summary; never raw backend data.
+    ContactSummary:
+      type: object
+      additionalProperties: false
+      required: [contact_count, phone_count, last_sync_unix_seconds]
+      properties:
+        contact_count:
+          type: integer
+          minimum: 0
+        phone_count:
+          type: integer
+          minimum: 0
+        last_sync_unix_seconds:
+          description: Unix timestamp for the last successful full-snapshot sync.
+          oneOf:
+            - type: integer
+              minimum: 0
+            - type: "null"

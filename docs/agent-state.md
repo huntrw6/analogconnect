@@ -1,19 +1,22 @@
 # AnalogConnect Agent State
 
 ## Current milestone
-Milestone 1 — backend skeleton and state model — COMPLETE
+Milestone 2 — PBAP contact synchronization — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
 
 ## Current phase
-Backend state model and health/status API — COMPLETE
+Privacy-safe adapter, persistence, normalization, search, and caller matching — COMPLETE
 
 ## Current objective
-Proceed to PBAP complete-contact synchronization after approval of the hardware and data-handling test plan.
+Proceed with hardware-free MAP incoming synchronization; validate PBAP against the
+real iPhone only under a privacy-controlled test plan.
 
 ## Current classification
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Milestone 0A established the authoritative current-state and ADRs, redacted tracked Bluetooth identifiers, and strengthened capture ignores. Milestone 1 added the Rust `analogconnectd` workspace, explicit state transitions, mockable hardware boundaries, structured redacted logging, graceful shutdown, and versioned health/status endpoints.
+Milestone 2 added an in-memory privacy boundary around `imsg contacts --raw`,
+redacted domain debug output, transactional SQLite snapshot replacement,
+normalization, search, ambiguity-safe caller matching, and an aggregate-only API.
 
 ## Evidence
 
@@ -108,10 +111,12 @@ SCO cleanly torn down after hangup
 - Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
 
 ## Pending user actions
-- None — Milestone 0 complete
+- A later PBAP validation will require the paired iPhone and an approved procedure
+  that does not retain or display contact payloads.
 
 ## Next action
-Milestone 2: design and implement the privacy-safe PBAP adapter, contact persistence, normalization, and search. Hardware access requires a separate approved test plan.
+Milestone 3: implement the privacy-safe MAP incoming synchronization core and
+notification/polling fallback with synthetic fixtures. Hardware access remains deferred.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing

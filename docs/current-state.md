@@ -4,10 +4,12 @@ This document is authoritative for current project status. Earlier phase documen
 remain as investigation history; where they disagree with this document, their
 interpretations are superseded.
 
-## Current commit
+## Current implementation
 
-- Milestone 0A baseline: `a65706d`.
-- Milestone 1 backend skeleton: `eb451e1`.
+- Milestone 0A baseline and Milestone 1 backend skeleton are complete.
+- Milestone 2 contact synchronization software is implemented and awaits a
+  privacy-controlled hardware validation before it can be classified as
+  `VERIFIED_HARDWARE` end to end.
 
 ## Current architecture
 
@@ -25,8 +27,9 @@ iPhone MAP / PBAP / HFP / eSCO
 ```
 
 The repository contains the Bash feasibility harness plus a manually runnable Rust
-daemon skeleton. The daemon currently exposes hardware-free health/status APIs;
-Bluetooth adapters and the Android application have not yet been implemented.
+daemon. The daemon exposes hardware-free health/status/contact-summary APIs and a
+privacy-safe PBAP adapter, transactional SQLite contact store, normalization,
+search, and caller matching. The Android application has not yet been implemented.
 
 ## Environment
 
@@ -49,6 +52,20 @@ Bluetooth adapters and the Android application have not yet been implemented.
 - `VERIFIED_AUTOMATED`: the daemon bound to loopback, returned both endpoints,
   and stopped cleanly on Ctrl-C during a local smoke test.
 - `DOCUMENTED`: `protocol/openapi-v1.yaml` is the versioned initial control-plane contract.
+
+### Contact synchronization software
+
+- `VERIFIED_AUTOMATED`: sanitized `imsg contacts --raw` output is parsed without
+  logging or debug-printing names and numbers.
+- `VERIFIED_AUTOMATED`: complete contact snapshots replace SQLite state atomically;
+  failed pulls preserve the previous snapshot and enter backoff.
+- `VERIFIED_AUTOMATED`: normalized caller lookup returns an exact or unique suffix
+  match and refuses ambiguous matches.
+- `VERIFIED_AUTOMATED`: case-insensitive name search escapes SQL wildcard input.
+- `VERIFIED_AUTOMATED`: the contact database is created with user-only permissions
+  on Unix and the API exposes aggregate counts only.
+- `DOCUMENTED`: local `imsg` 0.3.1 source defines `contacts --raw` as full PBAP
+  contact output with normalization disabled.
 
 ### MAP
 
@@ -77,7 +94,8 @@ Bluetooth adapters and the Android application have not yet been implemented.
 - `UNKNOWN`: Pi-originated answer, reject, hangup, dial, DTMF, mute, and gain control.
 - `UNKNOWN`: MAP Message Notification Service behavior and reliable incremental sync.
 - `UNKNOWN`: MAP sending, delivery state, MMS, attachments, and locked-iPhone behavior.
-- `UNKNOWN`: complete PBAP records, phone-number extraction, normalization, and caller matching.
+- `UNKNOWN`: compatibility of the parser with the real iPhone's complete
+  `imsg contacts --raw` output; no private contact payload has been captured or committed.
 - `UNKNOWN`: automatic recovery after reboot, Bluetooth loss, or network loss.
 - `UNKNOWN`: Android device hardware characteristics and end-to-end Android behavior.
 
@@ -110,10 +128,9 @@ Bluetooth adapters and the Android application have not yet been implemented.
 
 ## Next milestone
 
-Milestone 2: PBAP complete-contact synchronization. First build a privacy-safe
-`imsg` adapter and sanitized fixtures behind the existing `PbapBackend` boundary,
-then add SQLite persistence, phone-number normalization, search, and caller matching.
-Do not deploy the daemon as a system service yet.
+Milestone 3: MAP incoming synchronization and notification/polling fallback. Build
+and validate the hardware-free storage and synchronization core before requesting
+phone interaction. Do not deploy the daemon as a system service yet.
 
 ## End-to-end roadmap
 
