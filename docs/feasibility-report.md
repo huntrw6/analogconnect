@@ -17,12 +17,13 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 | PBAP phone number | NOT TESTED | Not attempted | — | Requires --get with handle |
 | PBAP E.164 normalization | NOT TESTED | Not attempted | — | |
 | HFP call event | `VERIFIED_AUTOMATED` | +CIEV call/callsetup transitions observed | Phase I | callsetup=1→call=1→callsetup=0→call=0 |
-| HFP answer | `VERIFIED_AUTOMATED` | Call answered, call=1 indicator | Phase I | iPhone-initiated answer |
-| HFP hangup | `VERIFIED_AUTOMATED` | Call ended, call=0, SCO released | Phase I | RFCOMM retained post-hangup |
+| HFP answer | UNKNOWN | Answered state observed; Pi-originated command not captured | Phase I | Requires dedicated control test |
+| HFP hangup | UNKNOWN | Ended state observed; Pi-originated command not captured | Phase I | Requires dedicated control test |
 | HFP dial | UNKNOWN | Not tested — outgoing call | — | Requires outgoing call test |
 | HFP DTMF | UNKNOWN | Not tested | — | Requires active call test |
-| SCO speaker audio | `VERIFIED_AUTOMATED` | SCO Data TX flowing (Pi→iPhone) | Phase I | Handle 6, dlen 60, mSBC codec |
-| SCO microphone audio | `VERIFIED_AUTOMATED` | SCO Data RX flowing (iPhone→Pi) | Phase I | Handle 6, dlen 60, mSBC codec |
+| SCO iPhone→Pi packets | `VERIFIED_AUTOMATED` | SCO Data RX observed | Phase I | Content/intelligibility unknown |
+| SCO Pi→iPhone packets | `VERIFIED_AUTOMATED` | SCO Data TX observed | Phase I | Content/intelligibility unknown |
+| Human-confirmed intelligible audio | UNKNOWN | No manual listening result recorded | Phase I | Test separately in both directions |
 | HFP codec negotiation | `VERIFIED_AUTOMATED` | +BCS:2 → AT+BCS=2 → OK | Phase I | mSBC selected by iPhone |
 | eSCO establishment | `VERIFIED_AUTOMATED` | HCI Connect Request → Accept → Complete | Phase I | eSCO Handle 6 established |
 | Profile coexistence | `VERIFIED_AUTOMATED` | RFCOMM retained post-call, MAP/PBAP working | Phase I | All profiles coexist |
@@ -46,7 +47,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 | Property | Value |
 |---|---|
-| Name | illuminary-cinema |
+| Name | redacted |
 | Icon | phone |
 | Paired | yes |
 | Trusted | yes |
@@ -134,7 +135,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 ### Failure Layer
 
-`HFP_CALL_AUDIO_VERIFIED` — Milestone 0 is fully verified. All four capabilities (MAP message access, PBAP contact access, HFP call control, HFP call audio) demonstrated with the real iPhone. Phase I confirmed iPhone initiates codec negotiation (+BCS:2), WirePlumber confirms (AT+BCS=2), eSCO established with mSBC, bidirectional audio flows, SCO cleanly torn down after hangup, RFCOMM retained, MAP/PBAP operational post-call.
+`HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED` — Milestone 0 Bluetooth feasibility is complete. Phase I confirmed codec negotiation, mSBC selection, eSCO establishment, bidirectional SCO packets, clean teardown, RFCOMM retention, and post-call MAP/PBAP operation. Human-confirmed intelligible audio and Pi-originated call commands remain `UNKNOWN`.
 
 #### Superseded classifications (do not cite)
 
@@ -155,7 +156,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 
 #### Current classification
 
-`HFP_CALL_AUDIO_VERIFIED` — Milestone 0 is fully verified. All four capabilities demonstrated. Phase I confirmed: iPhone initiates codec negotiation, eSCO established, bidirectional audio, SCO torn down, RFCOMM retained, MAP/PBAP work post-call.
+`HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED` — Phase I confirms packet-level call-audio feasibility, not intelligible user-perceived audio.
 
 ### Previous Configuration Issues (resolved)
 
@@ -177,7 +178,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 7. ~~No SCO nodes~~ — EXPECTED while idle. May appear when audio is routed to the Pi.
 8. ~~SCO connection reset by iPhone~~ — Phase 4 observation. Phase I confirmed SCO works correctly during active call.
 9. **A2DP SET_CONFIGURATION rejected** — iPhone rejected initial A2DP codec negotiation (separate from HFP)
-10. ~~Active-call test required~~ — RESOLVED. Phase I confirmed: incoming-call test shows +BCS, AT+BCS, eSCO, bidirectional audio, SCO teardown, RFCOMM retention.
+10. ~~Active-call test required~~ — RESOLVED for transport feasibility. Phase I confirmed: incoming-call test shows +BCS, AT+BCS, eSCO, bidirectional SCO packets, teardown, and RFCOMM retention.
 
 ## Key Findings
 
@@ -188,7 +189,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 5. imsg connects via its own OBEX implementation (bluer crate)
 6. MAP channel: RFCOMM 2, PBAP channel: RFCOMM 13
 7. iPhone advertises HFP AG (`111f`) — correct for Pi acting as hands-free
-8. PipeWire EnumProfile does not expose `headset-head-unit` — only `audio-gateway` (Pi-as-AG) — correct per source analysis
+8. PipeWire exposes `audio-gateway` for the remote iPhone device — expected for the Pi-as-HF architecture
 9. Explicit `ConnectProfile(111f)` returns success — HFP RFCOMM connection established
 10. HFP AT SLC completes successfully — all commands return OK (Phase H: full WirePlumber trace)
 11. NewConnection IS delivered at `/Profile/HFPHF` — WirePlumber received RFCOMM fd and accepted it
@@ -197,7 +198,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 14. One-shot busctl RegisterProfile does not persist — registration removed when caller exits
 15. Previous `PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED` diagnosis withdrawn — default is already `native`
 16. Phase 7d btmon proves local Pi initiates RFCOMM (SABM TX), not iPhone — earlier "BlueZ never opens RFCOMM" claim withdrawn
-17. D-Bus `method_return` rejection observed — may indicate security policy issue preventing Profile1 handshake completion
+17. D-Bus `method_return` rejection text was observed historically, but the policy-root-cause interpretation is withdrawn because later captures proved Profile1 completion
 18. Phase 4 restart: headset-head-unit DID appear (evidence: `spa.bluez5.sink.sco` error), but SCO link was reset by iPhone (-104)
 19. Phase 4 restart: A2DP `SET_CONFIGURATION rejected: Configuration not supported (41)` — iPhone rejected codec
 20. `ConnectProfile(111f)` uses the correct remote UUID (HFP Audio Gateway), not a role mismatch
@@ -218,7 +219,7 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 35. **Phase I**: iPhone initiates codec negotiation with `+BCS:2` (mSBC) on incoming call — `VERIFIED_AUTOMATED`
 36. **Phase I**: WirePlumber (Pi as HF) confirms codec with `AT+BCS=2` → OK — `VERIFIED_AUTOMATED`
 37. **Phase I**: eSCO connection established — HCI Connect Request → Accept Synchronous Connection → Synchronous Connect Complete (Handle 6) — `VERIFIED_AUTOMATED`
-38. **Phase I**: Bidirectional SCO audio flowing — SCO Data RX + TX on Handle 6, dlen 60 — `VERIFIED_AUTOMATED`
+38. **Phase I**: Bidirectional SCO packets observed — SCO Data RX + TX on Handle 6, dlen 60 — `VERIFIED_AUTOMATED`; intelligible audio remains `UNKNOWN`
 39. **Phase I**: Call indicator transitions: `callsetup=1` → `call=1` → `callsetup=0` → `call=0` — `VERIFIED_AUTOMATED`
 40. **Phase I**: `telephony_call_register` and `telephony_call_unregister` lifecycle observed — `VERIFIED_AUTOMATED`
 41. **Phase I**: SCO transport stopped and released cleanly after hangup — `VERIFIED_AUTOMATED`
@@ -227,4 +228,4 @@ Milestone: 0 — iPhone Bluetooth Feasibility
 44. **Phase I**: PBAP contacts pulled post-call (exit 0) — `VERIFIED_AUTOMATED`
 45. **Phase I**: Two incoming calls observed — first call established SCO, second call answered and held — `VERIFIED_AUTOMATED`
 46. **Phase I**: PipeWire initial profile `off` after call — expected (no active HFP transport) — `VERIFIED_AUTOMATED`
-47. **Milestone 0**: All four capabilities (MAP, PBAP, HFP call control, HFP call audio) fully verified — `VERIFIED_HARDWARE` + `VERIFIED_AUTOMATED`
+47. **Milestone 0**: MAP/PBAP access, HFP SLC/call indicators, codec negotiation, eSCO, and bidirectional SCO packet flow establish Bluetooth feasibility. Pi-originated call commands and intelligible audio remain `UNKNOWN`.

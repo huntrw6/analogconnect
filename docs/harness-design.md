@@ -73,9 +73,9 @@ USER_ACTION_REQUIRED  User must perform an action on the iPhone
 
 **Outputs**: PASS/FAIL with message count or error
 
-**Dependencies**: imsg (GNUfood), BlueZ obexd
+**Dependencies**: imsg (GNUfood); `bluez-obexd` is not required for the verified path
 
-**Implemented**: No — requires imsg installation and paired device
+**Implemented**: No in the shell harness. The installed `imsg` CLI has been used directly against the paired device.
 
 **Requires real hardware**: Yes
 
@@ -87,9 +87,9 @@ USER_ACTION_REQUIRED  User must perform an action on the iPhone
 
 **Outputs**: PASS/FAIL with contact count or error
 
-**Dependencies**: imsg (GNUfood), BlueZ obexd
+**Dependencies**: imsg (GNUfood); `bluez-obexd` is not required for the verified path
 
-**Implemented**: No — requires imsg installation and paired device
+**Implemented**: No in the shell harness. The installed `imsg` CLI has been used directly against the paired device.
 
 **Requires real hardware**: Yes
 

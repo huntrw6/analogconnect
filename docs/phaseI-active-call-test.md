@@ -1,13 +1,13 @@
 # Phase I — Active Incoming Call and SCO Audio Test
 
-**Classification: HFP_CALL_AUDIO_VERIFIED** `VERIFIED_AUTOMATED`
+**Classification: HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED** `VERIFIED_AUTOMATED`
 
 **Date:** 2026-08-01
-**Git:** Pending
+**Git:** `00c2c12`
 
 ## Summary
 
-Active incoming call test completed successfully. iPhone initiated codec negotiation (`+BCS:2`), WirePlumber confirmed mSBC (`AT+BCS=2`), eSCO connection established, bidirectional audio verified via SCO Data RX/TX, call indicators transitioned correctly, SCO cleanly torn down after hangup, RFCOMM retained, MAP and PBAP fully operational post-call.
+Active incoming call transport test completed successfully. iPhone initiated codec negotiation (`+BCS:2`), WirePlumber confirmed mSBC (`AT+BCS=2`), an eSCO connection was established, and SCO packets were observed in both directions. Call indicators transitioned correctly, SCO cleanly tore down after hangup, RFCOMM remained connected, and MAP/PBAP commands worked post-call. No manual listening result was recorded, so intelligible audio in either direction remains `UNKNOWN`.
 
 ## Test Sequence
 
@@ -51,7 +51,7 @@ Active incoming call test completed successfully. iPhone initiated codec negotia
 
 | Item | Result |
 |------|--------|
-| RFCOMM DLC | `<REDACTED_BLUETOOTH_ADDRESS> <REDACTED_BLUETOOTH_ADDRESS> 1 16 1015 27 195` — alive |
+| RFCOMM DLC | Local and remote addresses redacted; DLCI 16, MTU 1015 — alive |
 | HCI connections | ACL + LE only (no SCO) |
 | SCO debugfs | Empty |
 | PipeWire profile | `off` (expected — no active HFP transport) |
@@ -75,12 +75,12 @@ Active incoming call test completed successfully. iPhone initiated codec negotia
 
 ## Classification
 
-**HFP_CALL_AUDIO_VERIFIED** — All criteria met.
+**HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED** — All packet-level criteria met.
 
 - iPhone initiates codec negotiation with `+BCS:<codec>`
 - WirePlumber (Pi as HF) confirms with `AT+BCS=<codec>`
 - eSCO established with mSBC codec
-- Bidirectional audio flows during call
+- SCO packets flow in both directions during the call
 - SCO cleanly torn down after hangup
 - RFCOMM retained for MAP/PBAP
 
@@ -90,12 +90,13 @@ Phase I proves the Raspberry Pi can:
 1. Receive HFP call indicators from iPhone
 2. Participate in codec negotiation (HF role)
 3. Establish eSCO audio connection
-4. Have bidirectional call audio
+4. Exchange SCO packets in both directions
 5. Cleanly tear down audio after hangup
 6. Retain RFCOMM for data services (MAP/PBAP)
 
-**Milestone 0 is now FULLY VERIFIED for all four capabilities:**
+**Milestone 0 established feasibility for all four Bluetooth areas:**
 - MAP message access: `VERIFIED_HARDWARE`
 - PBAP contact access: `VERIFIED_HARDWARE`
-- HFP call control: `VERIFIED_AUTOMATED` (Phase E, H)
-- HFP call audio: `VERIFIED_AUTOMATED` (Phase I)
+- HFP call indicators and SLC: `VERIFIED_AUTOMATED` (Phase E, H, I)
+- HFP codec, eSCO, and bidirectional SCO packets: `VERIFIED_AUTOMATED` (Phase I)
+- Human-confirmed intelligible call audio: `UNKNOWN`

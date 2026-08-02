@@ -31,3 +31,15 @@ upstream/
 # Pairing keys and personal data (never commit)
 *.key
 *.db
+
+# Raw Bluetooth and network captures (private unless explicitly sanitized)
+*.btsnoop
+*.cfa
+*.pcap
+*.pcapng
+
+# Local configuration and authentication material
+.env
+*.token
+*.sqlite
+*.sqlite3

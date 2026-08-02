@@ -1,5 +1,8 @@
 # Phase 5A — Profile Lifecycle from Phase 4 Traces
 
+> Historical investigation record. Its open questions were resolved or superseded
+> by Phases G, H, and I. See `docs/current-state.md`.
+
 ## Evidence labels
 - `VERIFIED_AUTOMATED` — btmon btsnoop capture, PipeWire journal, D-Bus trace
 - `INFERRED` — timeline reconstructed from multiple independent captures

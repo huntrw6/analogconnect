@@ -1,5 +1,9 @@
 # Phase G: Current-Owner Connection Test
 
+> Historical investigation record. The classification below was superseded by
+> Phase H, which captured the complete SLC, and Phase I, which captured active-call
+> codec and eSCO behavior. See `docs/current-state.md`.
+
 **Date**: 2026-08-01 13:44–13:52 PDT
 **Classification**: `HFP_CURRENT_OWNER_ACCEPTS_BUT_PIPELINE_INACTIVE`
 **Previous classification (refuted)**: `HFP_RFCOMM_PRECEDES_CURRENT_WIREPLUMBER_REGISTRATION`
@@ -36,7 +40,7 @@ This refutes the earlier hypothesis that RFCOMM timing was the cause. The issue 
 
 2. Verified RFCOMM re-establishment (8s later):
    - RFCOMM: active session to iPhone on channel 8, DLCI 16, MTU 1015
-   - `rfcomm_dlc`: `<REDACTED_BLUETOOTH_ADDRESS> <REDACTED_BLUETOOTH_ADDRESS> 1 16 1015 24 245`
+   - `rfcomm_dlc`: local and remote addresses redacted; DLCI 16, MTU 1015
 
 3. D-Bus monitor captured:
    - `NewConnection` delivered to `Destination=:1.885` (current WirePlumber, PID 298021)

@@ -1,5 +1,10 @@
 # Phase 5D — Controlled Incoming-Call Test
 
+> Historical blocked checkpoint. The interpretation below was superseded by
+> Phases H and I: `audio-gateway` is the expected remote-device profile for this
+> Pi-as-HF architecture, and SCO appears when call audio is requested. See
+> `docs/current-state.md`.
+
 ## Status: BLOCKED — EnumProfile absent
 
 ## Pre-test verification

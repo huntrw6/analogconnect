@@ -19,7 +19,7 @@ Date: 2026-07-31
 
 ## Bluetooth
 
-- `VERIFIED_AUTOMATED`: Controller: hci0 — <REDACTED_BLUETOOTH_ADDRESS> (public)
+- `VERIFIED_AUTOMATED`: Controller: hci0 — address redacted
 - `VERIFIED_AUTOMATED`: Manufacturer: 0x0131 (305) — likely Cypress/Infineon
 - `VERIFIED_AUTOMATED`: BT Version: 0x09 (Bluetooth 5.x)
 - `VERIFIED_AUTOMATED`: RF-kill: Neither soft nor hard blocked
@@ -74,14 +74,14 @@ Note: MAP and PBAP client roles may only appear after BlueZ profile plugins are 
 - `VERIFIED_AUTOMATED`: Meson 1.7.0
 - `VERIFIED_AUTOMATED`: Ninja 1.12.1
 - `VERIFIED_AUTOMATED`: pkg-config 1.8.1
-- `UNKNOWN`: Rust/Cargo — NOT INSTALLED
+- `VERIFIED_AUTOMATED`: Rust 1.97.1 / Cargo 1.97.1
 - `UNKNOWN`: CMake — NOT INSTALLED
-- `UNKNOWN`: ShellCheck — NOT INSTALLED
+- `VERIFIED_AUTOMATED`: ShellCheck 0.10.0
 
 ## User Groups
 
 - `VERIFIED_AUTOMATED`: Groups: operat adm dialout cdrom sudo audio video plugdev games users netdev lpadmin gpio i2c spi render input
-- `UNKNOWN`: No `bluetooth` group — may need to be added for non-root Bluetooth access
+- `VERIFIED_AUTOMATED`: User is in the `bluetooth` group
 
 ## Readiness Summary
 
@@ -104,8 +104,8 @@ Note: MAP and PBAP client roles may only appear after BlueZ profile plugins are 
 - CMake (may be needed for some build dependencies)
 - `pactl` (for PulseAudio compatibility queries)
 
-### Needs Investigation
+### Superseded initial unknowns
 
-- MAP and PBAP profile availability on this BlueZ configuration
-- SCO audio routing through PipeWire
-- Whether BlueZ OBEX MAP and PBAP clients are installed and functional
+- MAP and PBAP work through `imsg`, which uses its own OBEX implementation.
+- PipeWire/WirePlumber established an mSBC eSCO connection during Phase I.
+- Bidirectional SCO packet flow is verified; human-confirmed intelligible audio remains `UNKNOWN`.

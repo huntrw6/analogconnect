@@ -1,5 +1,8 @@
 # Phase F — PipeWire HFP Profile State Inspection
 
+> Historical investigation record. The Phase F classification and open questions
+> were superseded by Phases G, H, and I. See `docs/current-state.md`.
+
 ## Evidence labels
 - `VERIFIED_AUTOMATED` — pw-cli, busctl, debugfs, btmon
 - `CURRENT_NEWCONNECTION_NOT_CAPTURED` — D-Bus monitor started after RFCOMM establishment
@@ -8,11 +11,11 @@
 
 ### Device identification
 - **Current Device ID**: 41
-- **Device name**: `bluez_card.20_1A_94_70_26_7C`
+- **Device name**: `bluez_card.<redacted>`
 - **Device API**: `bluez5`
-- **Device description**: `illuminary-cinema`
+- **Device description**: redacted
 - **`api.bluez5.connection`**: `connected`
-- **`api.bluez5.path`**: `/org/bluez/hci0/dev_20_1A_94_70_26_7C`
+- **`api.bluez5.path`**: `/org/bluez/hci0/dev_<redacted>`
 
 ### EnumProfile entries
 | Index | Name | Description | Available | Priority |
@@ -49,7 +52,7 @@
 
 ### RFCOMM status
 - **`/proc/net/bluetooth/rfcomm`**: Does not exist (rfcomm module not in procfs)
-- **`/sys/kernel/debug/bluetooth/rfcomm`**: Active session to `<REDACTED_BLUETOOTH_ADDRESS>` on channel 8
+- **`/sys/kernel/debug/bluetooth/rfcomm`**: Active session to the redacted iPhone address on channel 8
 - **`/sys/kernel/debug/bluetooth/rfcomm_dlc`**: DLCI 16 (0x10), MTU 1015
 - **`/sys/kernel/debug/bluetooth/sco`**: No SCO connections
 - **L2CAP PSM 3 (RFCOMM)**: Active — CID 0x0041/0x0909, MTU 1021/2582

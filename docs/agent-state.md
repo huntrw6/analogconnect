@@ -1,19 +1,19 @@
 # AnalogConnect Agent State
 
 ## Current milestone
-Milestone 0
+Milestone 0A — baseline cleanup and reproducibility
 
 ## Current phase
 Phase I — Active Call and SCO Test — COMPLETE
 
 ## Current objective
-Milestone 0 is fully verified. All four capabilities (MAP, PBAP, HFP call control, HFP call audio) demonstrated with the real iPhone.
+Preserve the completed Bluetooth feasibility evidence while separating packet-level findings from user-perceived behavior, then begin the Milestone 1 backend.
 
 ## Current classification
-`HFP_CALL_AUDIO_VERIFIED`
+`HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Phase I: Active incoming call test completed successfully. Two incoming calls observed. First call: iPhone initiated codec negotiation (`+BCS:2`), WirePlumber confirmed mSBC (`AT+BCS=2`), eSCO established, bidirectional SCO audio flowing, SCO torn down. Second call: answered, call=1, callsetup=0, call ended (call=0), SCO cleanly released, RFCOMM retained. Post-call: MAP and PBAP fully operational. Milestone 0 complete.
+Phase I: Active incoming call transport test completed. Codec negotiation, eSCO establishment, bidirectional SCO packets, call indicators, teardown, RFCOMM retention, and post-call MAP/PBAP commands were observed. No manual listening result was recorded.
 
 ## Evidence
 
@@ -84,11 +84,13 @@ Phase I: Active incoming call test completed successfully. Two incoming calls ob
 ## Current state summary
 
 ```
-Milestone 0: FULLY VERIFIED
+Milestone 0: BLUETOOTH FEASIBILITY COMPLETE
 MAP: VERIFIED_HARDWARE
 PBAP: VERIFIED_HARDWARE
-HFP call control: VERIFIED_AUTOMATED
-HFP call audio: VERIFIED_AUTOMATED
+HFP SLC and call indicators: VERIFIED_AUTOMATED
+HFP codec/eSCO/SCO packet flow: VERIFIED_AUTOMATED
+Pi-originated call commands: UNKNOWN
+Human-confirmed intelligible audio: UNKNOWN
 RFCOMM alive post-call
 MAP/PBAP operational post-call
 SCO cleanly torn down after hangup
@@ -109,7 +111,7 @@ SCO cleanly torn down after hangup
 - None — Milestone 0 complete
 
 ## Next action
-Milestone 0 complete. Ready to proceed to Milestone 1 (Android companion app) or further HFP refinements as needed.
+Complete Milestone 0A documentation/privacy cleanup, then implement the Milestone 1 backend state model and health/status API before Android UI work.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
@@ -121,7 +123,7 @@ Milestone 0 complete. Ready to proceed to Milestone 1 (Android companion app) or
 - HFP NewConnection callback: VERIFIED (Phase G, H — delivered to `:1.885`, accepted)
 - HFP DisconnectProfile/ConnectProfile: VERIFIED (Phase G — RFCOMM successfully removed and re-created)
 - HFP control plane: VERIFIED (Phase H — SLC complete, indicators synchronized, RFCOMM alive)
-- HFP incoming-call test: VERIFIED (Phase I — +BCS codec negotiation, eSCO established, bidirectional audio, SCO teardown, RFCOMM retained, MAP/PBAP post-call)
+- HFP incoming-call transport test: VERIFIED (Phase I — +BCS codec negotiation, eSCO established, bidirectional SCO packets, teardown, RFCOMM retained, MAP/PBAP post-call)
 
 ## Important decisions
 - imsg works without bluez-obexd — uses own OBEX implementation
