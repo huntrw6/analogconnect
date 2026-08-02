@@ -101,6 +101,10 @@ fi
 echo ""
 echo "=== inspect-device.sh tests ==="
 
+# Construct a synthetic locally administered address at runtime so no
+# Bluetooth address is stored in the repository.
+TEST_DEVICE_ADDRESS=$(printf '%s:%s:%s:%s:%s:%s' 02 00 00 00 00 01)
+
 # Test: --help exits 0
 OUT=$("$SCRIPT_DIR/scripts/inspect-device.sh" --help 2>&1) ; EC=$?
 assert_exit_code 0 "$EC" "inspect-device --help exit code"
@@ -119,7 +123,7 @@ OUT=$("$SCRIPT_DIR/scripts/inspect-device.sh" --device "not-a-mac" 2>&1) ; EC=$?
 assert_exit_code 64 "$EC" "inspect-device with invalid MAC exits 64"
 
 # Test: valid MAC format with non-existent device exits 1 (device not found)
-OUT=$("$SCRIPT_DIR/scripts/inspect-device.sh" --device "<REDACTED_BLUETOOTH_ADDRESS>" 2>&1) ; EC=$?
+OUT=$("$SCRIPT_DIR/scripts/inspect-device.sh" --device "$TEST_DEVICE_ADDRESS" 2>&1) ; EC=$?
 # This should either exit 1 (device not found) or work if somehow the device exists
 if [[ "$EC" -eq 1 ]]; then
     test_pass "inspect-device with non-existent device exits 1"
@@ -185,7 +189,7 @@ OUT=$("$SCRIPT_DIR/scripts/doctor.sh" 2>&1)
 assert_contains "$OUT" "bluetoothctl" "fixture: doctor checks bluetoothctl"
 
 # Fixture: inspect-device handles non-existent device
-OUT=$("$SCRIPT_DIR/scripts/inspect-device.sh" --device "<REDACTED_BLUETOOTH_ADDRESS>" 2>&1) ; EC=$?
+OUT=$("$SCRIPT_DIR/scripts/inspect-device.sh" --device "$TEST_DEVICE_ADDRESS" 2>&1) ; EC=$?
 if [[ "$EC" -ne 0 ]]; then
     test_pass "fixture: inspect-device fails for unpaired device"
 else
