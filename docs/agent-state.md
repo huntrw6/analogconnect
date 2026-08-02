@@ -14,9 +14,8 @@ privacy-controlled procedures, then proceed to outgoing MAP and HFP call control
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-The control plane now requires a bounded bearer token, compares it in constant
-time, redacts it from debugging, refuses startup without configuration, and keeps
-only the health endpoint public.
+The privacy-safe PBAP validator passed against the real iPhone with aggregate
+output only: 438 contacts and 471 phone fields. No contact payload was retained.
 
 ## Evidence
 
@@ -111,12 +110,11 @@ SCO cleanly torn down after hangup
 - Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
 
 ## Pending user actions
-- A later PBAP validation will require the paired iPhone and an approved procedure
-  that does not retain or display contact payloads.
+- MAP notification and HFP command validation still require guided iPhone interaction.
 
 ## Next action
-Run aggregate-only PBAP validation and a sanitized MAP notification lifecycle test
-with the real iPhone. No message bodies, addresses, handles, or contacts may be retained.
+Run a sanitized MAP notification lifecycle test with the real iPhone. No message
+bodies, addresses, handles, or contacts may be retained.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing

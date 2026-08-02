@@ -45,7 +45,8 @@ contacts + contact_phones
 - `DOCUMENTED`: the locally installed `imsg` 0.3.1 implementation renders full
   contacts as a name followed by indented phone-number lines; `--raw` disables
   its own E.164 normalization.
-- `UNKNOWN`: real-iPhone full-phonebook output compatibility and performance.
+- `VERIFIED_HARDWARE`: the validator successfully parsed 438 contacts and 471
+  phone fields from the real iPhone while emitting aggregate counts only.
 
 ## Hardware validation boundary
 

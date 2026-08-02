@@ -7,9 +7,8 @@ interpretations are superseded.
 ## Current implementation
 
 - Milestone 0A baseline and Milestone 1 backend skeleton are complete.
-- Milestone 2 contact synchronization software is implemented and awaits a
-  privacy-controlled hardware validation before it can be classified as
-  `VERIFIED_HARDWARE` end to end.
+- Milestone 2 contact parsing is validated against the real iPhone using an
+  aggregate-only pipeline; persistence/search remain hardware-free validated.
 - Milestone 3 MAP synchronization orchestration is implemented around imsg's
   encrypted store and awaits notification behavior validation with the iPhone.
 - Milestone 5 HFP call-control domain and AT encoding are implemented behind a
@@ -74,6 +73,9 @@ search, and caller matching. The Android application has not yet been implemente
   on Unix and the API exposes aggregate counts only.
 - `DOCUMENTED`: local `imsg` 0.3.1 source defines `contacts --raw` as full PBAP
   contact output with normalization disabled.
+- `VERIFIED_HARDWARE`: the aggregate-only validator parsed the real iPhone PBAP
+  output successfully: 438 contacts and 471 phone fields. No names or numbers
+  were displayed, logged, or written by the validator.
 
 ### Message synchronization software
 
@@ -153,8 +155,6 @@ search, and caller matching. The Android application has not yet been implemente
 - `UNKNOWN`: whether iPhone MAP notifications remain reliable across idle periods,
   reconnects, and locked-device states; polling remains the safe default.
 - `UNKNOWN`: MAP sending, delivery state, MMS, attachments, and locked-iPhone behavior.
-- `UNKNOWN`: compatibility of the parser with the real iPhone's complete
-  `imsg contacts --raw` output; no private contact payload has been captured or committed.
 - `UNKNOWN`: automatic recovery after reboot, Bluetooth loss, or network loss.
 - `UNKNOWN`: Android device hardware characteristics and end-to-end Android behavior.
 
