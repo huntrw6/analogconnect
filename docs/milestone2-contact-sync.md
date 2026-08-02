@@ -50,5 +50,15 @@ contacts + contact_phones
 ## Hardware validation boundary
 
 Hardware validation must use aggregate assertions only. A future test helper
-should consume contact output through stdin or a pipe, report counts and parser
-status, and discard raw payloads without writing them to disk or terminal.
+is provided as `pbap-validate`; it consumes contact output through stdin, reports
+counts and parser status, and discards raw payloads without writing them to disk
+or terminal.
+
+Run only with explicit hardware approval and the iPhone unlocked:
+
+```bash
+set -o pipefail
+imsg contacts --raw | cargo run --quiet --bin pbap-validate
+```
+
+The expected output contains only `PASS`, a contact count, and a phone-field count.
