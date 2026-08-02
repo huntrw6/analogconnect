@@ -4,16 +4,16 @@
 Milestone 0
 
 ## Current phase
-Phase I — Active Call and SCO Test (pending user approval)
+Phase I — Active Call and SCO Test — COMPLETE
 
 ## Current objective
-Run one controlled incoming-call test to determine whether the iPhone sends incoming-call indicators over the established SLC, initiates codec connection setup when call audio is routed to the Pi, sends unsolicited `+BCS:<codec>`, establishes SCO/eSCO, provides bidirectional call audio, and cleanly removes SCO after hangup while retaining RFCOMM.
+Milestone 0 is fully verified. All four capabilities (MAP, PBAP, HFP call control, HFP call audio) demonstrated with the real iPhone.
 
 ## Current classification
-`HFP_CONTROL_CHANNEL_READY_FOR_ACTIVE_CALL_TEST`
+`HFP_CALL_AUDIO_VERIFIED`
 
 ## Last completed action
-Phase H: Complete HFP profile cycle with all monitors active. AT SLC completed successfully (all 10 AT commands exchanged and acknowledged). WirePlumber trace log captured full AT sequence. HFP control plane fully established. No Audio Connection was requested during idle test — expected behavior.
+Phase I: Active incoming call test completed successfully. Two incoming calls observed. First call: iPhone initiated codec negotiation (`+BCS:2`), WirePlumber confirmed mSBC (`AT+BCS=2`), eSCO established, bidirectional SCO audio flowing, SCO torn down. Second call: answered, call=1, callsetup=0, call ended (call=0), SCO cleanly released, RFCOMM retained. Post-call: MAP and PBAP fully operational. Milestone 0 complete.
 
 ## Evidence
 
@@ -40,6 +40,16 @@ Phase H: Complete HFP profile cycle with all monitors active. AT SLC completed s
 - `VERIFIED_AUTOMATED`: Phase H: call=0, callsetup=0, callheld=0
 - `VERIFIED_AUTOMATED`: Phase H: RFCOMM remained connected after SLC
 - `VERIFIED_AUTOMATED`: Phase H: `telephony_ag_register` called — AudioGateway registered
+- `VERIFIED_AUTOMATED`: Phase I: iPhone sent `+BCS:2` (mSBC codec selection) — incoming call
+- `VERIFIED_AUTOMATED`: Phase I: WirePlumber sent `AT+BCS=2` → OK (codec confirmed)
+- `VERIFIED_AUTOMATED`: Phase I: HCI Connect Request (eSCO) → Accept Synchronous Connection → Synchronous Connect Complete (Handle 6)
+- `VERIFIED_AUTOMATED`: Phase I: Bidirectional SCO data flowing (SCO Data RX + TX, Handle 6, dlen 60)
+- `VERIFIED_AUTOMATED`: Phase I: `+CIEV: 3,1` → `call=1` → `callsetup=0` → `+CIEV: 2,0` → `call=0` (call indicator transitions)
+- `VERIFIED_AUTOMATED`: Phase I: `telephony_call_register` and `telephony_call_unregister` lifecycle
+- `VERIFIED_AUTOMATED`: Phase I: SCO transport stopped and released cleanly after hangup
+- `VERIFIED_AUTOMATED`: Phase I: RFCOMM retained after call — DLC alive post-call
+- `VERIFIED_AUTOMATED`: Phase I: MAP folders and inbox listed post-call (exit 0)
+- `VERIFIED_AUTOMATED`: Phase I: PBAP contacts pulled post-call (exit 0)
 - `VERIFIED_AUTOMATED`: `/sys/kernel/debug/bluetooth/rfcomm` shows active RFCOMM session to iPhone channel 8, dlci 16, mtu 1015
 - `VERIFIED_AUTOMATED`: Phase G4: `DisconnectProfile("0000111f-...")` successfully removes RFCOMM session
 - `VERIFIED_AUTOMATED`: Phase G6: `ConnectProfile("0000111f-...")` successfully creates fresh RFCOMM session
@@ -74,13 +84,14 @@ Phase H: Complete HFP profile cycle with all monitors active. AT SLC completed s
 ## Current state summary
 
 ```
-Connected=true
-ServicesResolved=true
-Current WirePlumber owns the HFP RFCOMM connection
-SLC complete
-Call indicators synchronized
-RFCOMM alive
-audio-gateway profile present
+Milestone 0: FULLY VERIFIED
+MAP: VERIFIED_HARDWARE
+PBAP: VERIFIED_HARDWARE
+HFP call control: VERIFIED_AUTOMATED
+HFP call audio: VERIFIED_AUTOMATED
+RFCOMM alive post-call
+MAP/PBAP operational post-call
+SCO cleanly torn down after hangup
 ```
 
 ## Do not require before the call
@@ -95,10 +106,10 @@ audio-gateway profile present
 - Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
 
 ## Pending user actions
-- Approve Phase I: Controlled incoming-call and SCO test
+- None — Milestone 0 complete
 
 ## Next action
-Phase I: Controlled incoming-call test. Requires user approval. Second phone to call the iPhone, one known test caller, manual answer and hangup, manual selection of Raspberry Pi as audio route if iOS presents it.
+Milestone 0 complete. Ready to proceed to Milestone 1 (Android companion app) or further HFP refinements as needed.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
@@ -110,7 +121,7 @@ Phase I: Controlled incoming-call test. Requires user approval. Second phone to 
 - HFP NewConnection callback: VERIFIED (Phase G, H — delivered to `:1.885`, accepted)
 - HFP DisconnectProfile/ConnectProfile: VERIFIED (Phase G — RFCOMM successfully removed and re-created)
 - HFP control plane: VERIFIED (Phase H — SLC complete, indicators synchronized, RFCOMM alive)
-- HFP incoming-call test: PENDING (Phase I — awaiting user approval)
+- HFP incoming-call test: VERIFIED (Phase I — +BCS codec negotiation, eSCO established, bidirectional audio, SCO teardown, RFCOMM retained, MAP/PBAP post-call)
 
 ## Important decisions
 - imsg works without bluez-obexd — uses own OBEX implementation
