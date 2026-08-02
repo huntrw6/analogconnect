@@ -1,0 +1,18 @@
+[package]
+name = "analogconnectd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+analogconnect-core = { path = "../analogconnect-core" }
+axum.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tower.workspace = true
