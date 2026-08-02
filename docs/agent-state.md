@@ -4,7 +4,7 @@
 Milestone 3 — MAP incoming synchronization — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
 
 ## Current phase
-Notification-driven sync with polling fallback and aggregate health — COMPLETE
+Hardware-free PBAP, MAP orchestration, and HFP command core — COMPLETE
 
 ## Current objective
 Validate PBAP parsing and MAP notification behavior against the real iPhone under
@@ -14,9 +14,9 @@ privacy-controlled procedures, then proceed to outgoing MAP and HFP call control
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Milestone 3 added a redacted adapter to imsg's encrypted incremental store,
-notification-triggered synchronization, notification-silence polling fallback,
-backoff/counter state, and an aggregate-only API.
+Milestone 5 software groundwork added privacy-safe HFP command types, strict
+call-state validation, redacted failures, and standard AT encoding behind a mock
+transport. Live RFCOMM integration remains intentionally unselected until hardware review.
 
 ## Evidence
 

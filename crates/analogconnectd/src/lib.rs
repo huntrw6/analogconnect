@@ -1,4 +1,5 @@
 pub mod contacts;
+pub mod hfp;
 pub mod messages;
 
 use std::{sync::Arc, time::Instant};

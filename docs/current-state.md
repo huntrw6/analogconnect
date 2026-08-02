@@ -12,6 +12,8 @@ interpretations are superseded.
   `VERIFIED_HARDWARE` end to end.
 - Milestone 3 MAP synchronization orchestration is implemented around imsg's
   encrypted store and awaits notification behavior validation with the iPhone.
+- Milestone 5 HFP call-control domain and AT encoding are implemented behind a
+  mock transport; no live command has been sent to the iPhone.
 
 ## Current architecture
 
@@ -82,6 +84,18 @@ search, and caller matching. The Android application has not yet been implemente
 - `DOCUMENTED`: local `imsg` 0.3.1 source provides encrypted persistence,
   incremental per-folder cursors, broker `Watch` events, and sync/outbox states.
 
+### HFP call-control software
+
+- `VERIFIED_AUTOMATED`: answer, reject, hangup, dial, DTMF, mute, and gain
+  commands are validated against call state before reaching a backend.
+- `VERIFIED_AUTOMATED`: failed backend commands preserve the prior call state.
+- `VERIFIED_AUTOMATED`: dial targets and DTMF values are redacted from `Debug`
+  output and backend errors contain no command payload.
+- `VERIFIED_AUTOMATED`: validated commands encode to HFP AT operations; mute uses
+  microphone gain zero and restores the last configured gain.
+- `UNKNOWN`: which live transport seam can safely share WirePlumber's existing
+  RFCOMM ownership without disrupting the verified SLC.
+
 ### MAP
 
 - `VERIFIED_HARDWARE`: folder and inbox listing work through `imsg`.
@@ -107,6 +121,7 @@ search, and caller matching. The Android application has not yet been implemente
 
 - `UNKNOWN`: human-confirmed intelligible call audio in either direction.
 - `UNKNOWN`: Pi-originated answer, reject, hangup, dial, DTMF, mute, and gain control.
+- `UNKNOWN`: real-iPhone acceptance and effects of Pi-originated call-control AT commands.
 - `UNKNOWN`: MAP Message Notification Service behavior and reliable incremental sync.
 - `UNKNOWN`: whether iPhone MAP notifications remain reliable across idle periods,
   reconnects, and locked-device states; polling remains the safe default.
