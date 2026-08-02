@@ -38,6 +38,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ContactSummary"
+  /api/v1/messages/summary:
+    get:
+      operationId: getMessageSyncSummary
+      description: Returns synchronization health without addresses, handles, or message bodies.
+      responses:
+        "200":
+          description: Privacy-safe MAP synchronization summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageSyncSummary"
 components:
   schemas:
     HealthResponse:
@@ -126,6 +137,31 @@ components:
           minimum: 0
         last_sync_unix_seconds:
           description: Unix timestamp for the last successful full-snapshot sync.
+          oneOf:
+            - type: integer
+              minimum: 0
+            - type: "null"
+    MessageSyncSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+        - mode
+        - successful_syncs
+        - failed_syncs
+        - last_success_unix_seconds
+      properties:
+        state:
+          enum: [idle, syncing, backing_off, error]
+        mode:
+          enum: [notifications, polling]
+        successful_syncs:
+          type: integer
+          minimum: 0
+        failed_syncs:
+          type: integer
+          minimum: 0
+        last_success_unix_seconds:
           oneOf:
             - type: integer
               minimum: 0

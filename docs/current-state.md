@@ -10,6 +10,8 @@ interpretations are superseded.
 - Milestone 2 contact synchronization software is implemented and awaits a
   privacy-controlled hardware validation before it can be classified as
   `VERIFIED_HARDWARE` end to end.
+- Milestone 3 MAP synchronization orchestration is implemented around imsg's
+  encrypted store and awaits notification behavior validation with the iPhone.
 
 ## Current architecture
 
@@ -67,6 +69,19 @@ search, and caller matching. The Android application has not yet been implemente
 - `DOCUMENTED`: local `imsg` 0.3.1 source defines `contacts --raw` as full PBAP
   contact output with normalization disabled.
 
+### Message synchronization software
+
+- `VERIFIED_AUTOMATED`: message sync starts in polling mode rather than assuming
+  that MAP notifications are operational.
+- `VERIFIED_AUTOMATED`: relevant MAP events trigger inbox synchronization;
+  notification silence falls back to bounded polling.
+- `VERIFIED_AUTOMATED`: sync success/failure counters and backoff transitions are
+  exposed without addresses, handles, or message bodies.
+- `VERIFIED_AUTOMATED`: the `imsg` command adapter discards stdout and stderr and
+  returns only redacted failure classes.
+- `DOCUMENTED`: local `imsg` 0.3.1 source provides encrypted persistence,
+  incremental per-folder cursors, broker `Watch` events, and sync/outbox states.
+
 ### MAP
 
 - `VERIFIED_HARDWARE`: folder and inbox listing work through `imsg`.
@@ -93,6 +108,8 @@ search, and caller matching. The Android application has not yet been implemente
 - `UNKNOWN`: human-confirmed intelligible call audio in either direction.
 - `UNKNOWN`: Pi-originated answer, reject, hangup, dial, DTMF, mute, and gain control.
 - `UNKNOWN`: MAP Message Notification Service behavior and reliable incremental sync.
+- `UNKNOWN`: whether iPhone MAP notifications remain reliable across idle periods,
+  reconnects, and locked-device states; polling remains the safe default.
 - `UNKNOWN`: MAP sending, delivery state, MMS, attachments, and locked-iPhone behavior.
 - `UNKNOWN`: compatibility of the parser with the real iPhone's complete
   `imsg contacts --raw` output; no private contact payload has been captured or committed.
@@ -128,9 +145,9 @@ search, and caller matching. The Android application has not yet been implemente
 
 ## Next milestone
 
-Milestone 3: MAP incoming synchronization and notification/polling fallback. Build
-and validate the hardware-free storage and synchronization core before requesting
-phone interaction. Do not deploy the daemon as a system service yet.
+Milestone 4: hardware-verified outgoing MAP messages, followed by HFP call control.
+Before that work, validate PBAP parsing and MAP notification behavior with the real
+iPhone using aggregate-only output. Do not deploy the daemon as a system service yet.
 
 ## End-to-end roadmap
 

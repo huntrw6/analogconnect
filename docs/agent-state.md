@@ -1,22 +1,22 @@
 # AnalogConnect Agent State
 
 ## Current milestone
-Milestone 2 — PBAP contact synchronization — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
+Milestone 3 — MAP incoming synchronization — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
 
 ## Current phase
-Privacy-safe adapter, persistence, normalization, search, and caller matching — COMPLETE
+Notification-driven sync with polling fallback and aggregate health — COMPLETE
 
 ## Current objective
-Proceed with hardware-free MAP incoming synchronization; validate PBAP against the
-real iPhone only under a privacy-controlled test plan.
+Validate PBAP parsing and MAP notification behavior against the real iPhone under
+privacy-controlled procedures, then proceed to outgoing MAP and HFP call control.
 
 ## Current classification
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Milestone 2 added an in-memory privacy boundary around `imsg contacts --raw`,
-redacted domain debug output, transactional SQLite snapshot replacement,
-normalization, search, ambiguity-safe caller matching, and an aggregate-only API.
+Milestone 3 added a redacted adapter to imsg's encrypted incremental store,
+notification-triggered synchronization, notification-silence polling fallback,
+backoff/counter state, and an aggregate-only API.
 
 ## Evidence
 
@@ -115,8 +115,8 @@ SCO cleanly torn down after hangup
   that does not retain or display contact payloads.
 
 ## Next action
-Milestone 3: implement the privacy-safe MAP incoming synchronization core and
-notification/polling fallback with synthetic fixtures. Hardware access remains deferred.
+Run aggregate-only PBAP validation and a sanitized MAP notification lifecycle test
+with the real iPhone. No message bodies, addresses, handles, or contacts may be retained.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing

@@ -1,10 +1,12 @@
 pub mod contacts;
+pub mod messages;
 
 use std::{sync::Arc, time::Instant};
 
 use analogconnect_core::SystemStatus;
 use axum::{Json, Router, extract::State, routing::get};
 use contacts::ContactSummary;
+use messages::MessageSyncSummary;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
@@ -14,6 +16,7 @@ pub const PROTOCOL_VERSION: u16 = 1;
 pub struct AppState {
     status: Arc<RwLock<SystemStatus>>,
     contact_summary: Arc<RwLock<ContactSummary>>,
+    message_summary: Arc<RwLock<MessageSyncSummary>>,
     started_at: Instant,
 }
 
@@ -22,6 +25,7 @@ impl AppState {
         Self {
             status: Arc::new(RwLock::new(status)),
             contact_summary: Arc::new(RwLock::new(ContactSummary::default())),
+            message_summary: Arc::new(RwLock::new(MessageSyncSummary::default())),
             started_at: Instant::now(),
         }
     }
@@ -46,6 +50,7 @@ pub fn app(state: AppState) -> Router {
         .route("/api/v1/health", get(health))
         .route("/api/v1/status", get(status))
         .route("/api/v1/contacts/summary", get(contact_summary))
+        .route("/api/v1/messages/summary", get(message_summary))
         .with_state(state)
 }
 
@@ -64,6 +69,10 @@ async fn status(State(state): State<AppState>) -> Json<SystemStatus> {
 
 async fn contact_summary(State(state): State<AppState>) -> Json<ContactSummary> {
     Json(state.contact_summary.read().await.clone())
+}
+
+async fn message_summary(State(state): State<AppState>) -> Json<MessageSyncSummary> {
+    Json(state.message_summary.read().await.clone())
 }
 
 #[cfg(test)]
@@ -151,5 +160,25 @@ mod tests {
         assert_eq!(json["contact_count"], 0);
         assert_eq!(json["phone_count"], 0);
         assert_eq!(json.as_object().unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn message_summary_does_not_expose_message_data() {
+        let response = app(AppState::default())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/messages/summary")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["mode"], "polling");
+        assert_eq!(json["successful_syncs"], 0);
+        assert_eq!(json.as_object().unwrap().len(), 5);
     }
 }
