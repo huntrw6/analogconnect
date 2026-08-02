@@ -49,6 +49,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageSyncSummary"
+  /api/v1/audio/summary:
+    get:
+      operationId: getAudioBridgeSummary
+      description: Returns queue and latency counters without audio samples.
+      responses:
+        "200":
+          description: Privacy-safe bidirectional audio bridge summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioBridgeSummary"
 components:
   schemas:
     HealthResponse:
@@ -166,3 +177,32 @@ components:
             - type: integer
               minimum: 0
             - type: "null"
+    AudioQueueSummary:
+      type: object
+      additionalProperties: false
+      required: [depth, enqueued, dequeued, dropped, max_observed_latency_micros]
+      properties:
+        depth:
+          type: integer
+          minimum: 0
+        enqueued:
+          type: integer
+          minimum: 0
+        dequeued:
+          type: integer
+          minimum: 0
+        dropped:
+          type: integer
+          minimum: 0
+        max_observed_latency_micros:
+          type: integer
+          minimum: 0
+    AudioBridgeSummary:
+      type: object
+      additionalProperties: false
+      required: [uplink, downlink]
+      properties:
+        uplink:
+          $ref: "#/components/schemas/AudioQueueSummary"
+        downlink:
+          $ref: "#/components/schemas/AudioQueueSummary"

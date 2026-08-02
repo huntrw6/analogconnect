@@ -14,6 +14,8 @@ interpretations are superseded.
   encrypted store and awaits notification behavior validation with the iPhone.
 - Milestone 5 HFP call-control domain and AT encoding are implemented behind a
   mock transport; no live command has been sent to the iPhone.
+- Milestone 6 in-memory audio bridge queues and aggregate instrumentation are
+  implemented; they are not yet connected to PipeWire or an Android transport.
 
 ## Current architecture
 
@@ -95,6 +97,19 @@ search, and caller matching. The Android application has not yet been implemente
   microphone gain zero and restores the last configured gain.
 - `UNKNOWN`: which live transport seam can safely share WirePlumber's existing
   RFCOMM ownership without disrupting the verified SLC.
+
+### Audio bridge software
+
+- `VERIFIED_AUTOMATED`: narrowband and wideband HFP PCM frames have explicit
+  7.5 ms format invariants and reject mismatched payload sizes.
+- `VERIFIED_AUTOMATED`: independent uplink/downlink queues are bounded and drop
+  the oldest frame on overflow to prevent unbounded latency growth.
+- `VERIFIED_AUTOMATED`: audio frame `Debug` output and the aggregate API contain
+  no sample values.
+- `VERIFIED_AUTOMATED`: queue depth, drop count, throughput, and maximum observed
+  in-memory latency are tracked without recording audio.
+- `UNKNOWN`: PipeWire node binding, codec conversion, network transport latency,
+  and intelligibility with real call audio.
 
 ### MAP
 

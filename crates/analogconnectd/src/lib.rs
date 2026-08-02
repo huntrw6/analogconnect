@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod contacts;
 pub mod hfp;
 pub mod messages;
@@ -5,6 +6,7 @@ pub mod messages;
 use std::{sync::Arc, time::Instant};
 
 use analogconnect_core::SystemStatus;
+use audio::AudioBridgeSummary;
 use axum::{Json, Router, extract::State, routing::get};
 use contacts::ContactSummary;
 use messages::MessageSyncSummary;
@@ -18,6 +20,7 @@ pub struct AppState {
     status: Arc<RwLock<SystemStatus>>,
     contact_summary: Arc<RwLock<ContactSummary>>,
     message_summary: Arc<RwLock<MessageSyncSummary>>,
+    audio_summary: Arc<RwLock<AudioBridgeSummary>>,
     started_at: Instant,
 }
 
@@ -27,6 +30,7 @@ impl AppState {
             status: Arc::new(RwLock::new(status)),
             contact_summary: Arc::new(RwLock::new(ContactSummary::default())),
             message_summary: Arc::new(RwLock::new(MessageSyncSummary::default())),
+            audio_summary: Arc::new(RwLock::new(AudioBridgeSummary::default())),
             started_at: Instant::now(),
         }
     }
@@ -52,6 +56,7 @@ pub fn app(state: AppState) -> Router {
         .route("/api/v1/status", get(status))
         .route("/api/v1/contacts/summary", get(contact_summary))
         .route("/api/v1/messages/summary", get(message_summary))
+        .route("/api/v1/audio/summary", get(audio_summary))
         .with_state(state)
 }
 
@@ -74,6 +79,10 @@ async fn contact_summary(State(state): State<AppState>) -> Json<ContactSummary> 
 
 async fn message_summary(State(state): State<AppState>) -> Json<MessageSyncSummary> {
     Json(state.message_summary.read().await.clone())
+}
+
+async fn audio_summary(State(state): State<AppState>) -> Json<AudioBridgeSummary> {
+    Json(state.audio_summary.read().await.clone())
 }
 
 #[cfg(test)]
@@ -181,5 +190,24 @@ mod tests {
         assert_eq!(json["mode"], "polling");
         assert_eq!(json["successful_syncs"], 0);
         assert_eq!(json.as_object().unwrap().len(), 5);
+    }
+
+    #[tokio::test]
+    async fn audio_summary_contains_no_samples() {
+        let response = app(AppState::default())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/audio/summary")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["uplink"]["depth"], 0);
+        assert_eq!(json["downlink"]["depth"], 0);
     }
 }

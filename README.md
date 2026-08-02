@@ -24,6 +24,7 @@ curl http://127.0.0.1:8787/api/v1/health
 curl http://127.0.0.1:8787/api/v1/status
 curl http://127.0.0.1:8787/api/v1/contacts/summary
 curl http://127.0.0.1:8787/api/v1/messages/summary
+curl http://127.0.0.1:8787/api/v1/audio/summary
 ```
 
 The daemon includes a privacy-safe `imsg` PBAP adapter and SQLite contact store,
