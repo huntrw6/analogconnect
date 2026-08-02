@@ -6,8 +6,8 @@ interpretations are superseded.
 
 ## Current commit
 
-- Baseline audited at `00c2c12` on branch `main`.
-- `VERIFIED_AUTOMATED`: the audit began with a clean working tree.
+- Milestone 0A baseline: `a65706d`.
+- Milestone 1 backend skeleton: `eb451e1`.
 
 ## Current architecture
 
@@ -24,8 +24,9 @@ iPhone MAP / PBAP / HFP / eSCO
        Android 8.1 application (later milestone)
 ```
 
-The repository currently contains a Bash feasibility harness. The Rust daemon and
-Android application have not yet been implemented.
+The repository contains the Bash feasibility harness plus a manually runnable Rust
+daemon skeleton. The daemon currently exposes hardware-free health/status APIs;
+Bluetooth adapters and the Android application have not yet been implemented.
 
 ## Environment
 
@@ -36,6 +37,18 @@ Android application have not yet been implemented.
 - Target Android version: Android 8.1 / API 27.
 
 ## Verified capabilities
+
+### Backend skeleton
+
+- `VERIFIED_AUTOMATED`: explicit independent Bluetooth, message, contact, HFP,
+  call, audio, and Android-client states have validated transitions.
+- `VERIFIED_AUTOMATED`: Bluetooth-facing boundaries are mockable without hardware.
+- `VERIFIED_AUTOMATED`: `GET /api/v1/health` and `GET /api/v1/status` pass API tests.
+- `VERIFIED_AUTOMATED`: Rust formatting, Clippy with warnings denied, and 13 Rust tests pass.
+- `VERIFIED_AUTOMATED`: the existing 31-test Bash suite still passes.
+- `VERIFIED_AUTOMATED`: the daemon bound to loopback, returned both endpoints,
+  and stopped cleanly on Ctrl-C during a local smoke test.
+- `DOCUMENTED`: `protocol/openapi-v1.yaml` is the versioned initial control-plane contract.
 
 ### MAP
 
@@ -97,10 +110,10 @@ Android application have not yet been implemented.
 
 ## Next milestone
 
-Milestone 1: implement a manually runnable Rust `analogconnectd` skeleton with
-explicit state models, mockable Bluetooth interfaces, redacted structured logging,
-graceful shutdown, and versioned health/status endpoints. Do not deploy it as a
-system service yet.
+Milestone 2: PBAP complete-contact synchronization. First build a privacy-safe
+`imsg` adapter and sanitized fixtures behind the existing `PbapBackend` boundary,
+then add SQLite persistence, phone-number normalization, search, and caller matching.
+Do not deploy the daemon as a system service yet.
 
 ## End-to-end roadmap
 

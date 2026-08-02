@@ -1,19 +1,19 @@
 # AnalogConnect Agent State
 
 ## Current milestone
-Milestone 0A — baseline cleanup and reproducibility
+Milestone 1 — backend skeleton and state model — COMPLETE
 
 ## Current phase
-Phase I — Active Call and SCO Test — COMPLETE
+Backend state model and health/status API — COMPLETE
 
 ## Current objective
-Preserve the completed Bluetooth feasibility evidence while separating packet-level findings from user-perceived behavior, then begin the Milestone 1 backend.
+Proceed to PBAP complete-contact synchronization after approval of the hardware and data-handling test plan.
 
 ## Current classification
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Phase I: Active incoming call transport test completed. Codec negotiation, eSCO establishment, bidirectional SCO packets, call indicators, teardown, RFCOMM retention, and post-call MAP/PBAP commands were observed. No manual listening result was recorded.
+Milestone 0A established the authoritative current-state and ADRs, redacted tracked Bluetooth identifiers, and strengthened capture ignores. Milestone 1 added the Rust `analogconnectd` workspace, explicit state transitions, mockable hardware boundaries, structured redacted logging, graceful shutdown, and versioned health/status endpoints.
 
 ## Evidence
 
@@ -111,10 +111,14 @@ SCO cleanly torn down after hangup
 - None — Milestone 0 complete
 
 ## Next action
-Complete Milestone 0A documentation/privacy cleanup, then implement the Milestone 1 backend state model and health/status API before Android UI work.
+Milestone 2: design and implement the privacy-safe PBAP adapter, contact persistence, normalization, and search. Hardware access requires a separate approved test plan.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
+- Rust unit/API tests: 13/13 passing
+- Cargo fmt: passing
+- Cargo Clippy with warnings denied: passing
+- Manual loopback daemon health/status and graceful-shutdown smoke test: passing
 - MH-MAP-001: PASS (MAP listing, retrieval working)
 - MH-PBAP-001: PASS (PBAP listing working after reconnection)
 - HFP RFCOMM establishment: PASS (Phase E, G, H — SABM TX, UA received, channel 8, dlci 16)

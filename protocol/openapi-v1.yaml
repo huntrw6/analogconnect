@@ -1,0 +1,104 @@
+openapi: 3.1.0
+info:
+  title: AnalogConnect Local Control API
+  version: 1.0.0
+  description: Initial hardware-free health and status contract.
+servers:
+  - url: http://127.0.0.1:8787
+    description: Loopback development server only
+paths:
+  /api/v1/health:
+    get:
+      operationId: getHealth
+      responses:
+        "200":
+          description: Daemon process health
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /api/v1/status:
+    get:
+      operationId: getStatus
+      responses:
+        "200":
+          description: Current independent subsystem states
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatus"
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, protocol_version, daemon_version, uptime_seconds]
+      properties:
+        status:
+          const: ok
+        protocol_version:
+          const: 1
+        daemon_version:
+          type: string
+        uptime_seconds:
+          type: integer
+          minimum: 0
+    SystemStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - protocol_version
+        - bluetooth
+        - messages
+        - contacts
+        - hfp_control
+        - call
+        - audio
+        - android_client
+        - last_error
+      properties:
+        protocol_version:
+          const: 1
+        bluetooth:
+          enum: [disconnected, connecting, connected, services_resolved, error]
+        messages:
+          enum: [idle, syncing, backing_off, error]
+        contacts:
+          enum: [idle, syncing, backing_off, error]
+        hfp_control:
+          enum:
+            - disconnected
+            - acl_connected
+            - services_resolved
+            - profile_registered
+            - rfcomm_connecting
+            - rfcomm_connected
+            - slc_negotiating
+            - slc_ready
+            - error
+        call:
+          enum: [idle, incoming, outgoing, active, held, ended, error]
+        audio:
+          enum:
+            - inactive
+            - codec_negotiating
+            - sco_connecting
+            - sco_active
+            - sco_tearing_down
+            - error
+        android_client:
+          enum: [disconnected, connecting, enrolled, authenticated, error]
+        last_error:
+          oneOf:
+            - $ref: "#/components/schemas/RedactedError"
+            - type: "null"
+    RedactedError:
+      type: object
+      additionalProperties: false
+      required: [code, summary]
+      properties:
+        code:
+          type: string
+        summary:
+          type: string
+          description: Privacy-safe operator-facing summary; never raw backend data.
