@@ -89,6 +89,9 @@ search, and caller matching. The Android application has not yet been implemente
   returns only redacted failure classes.
 - `DOCUMENTED`: local `imsg` 0.3.1 source provides encrypted persistence,
   incremental per-folder cursors, broker `Watch` events, and sync/outbox states.
+- `VERIFIED_HARDWARE`: a bounded real-iPhone inbox listing passed through the
+  aggregate-only validator with one row observed; no message metadata or content
+  was emitted by the validator.
 
 ### HFP call-control software
 

@@ -14,8 +14,8 @@ privacy-controlled procedures, then proceed to outgoing MAP and HFP call control
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-The privacy-safe PBAP validator passed against the real iPhone with aggregate
-output only: 438 contacts and 471 phone fields. No contact payload was retained.
+Privacy-safe PBAP and MAP validators passed against the real iPhone. PBAP emitted
+only aggregate contact/phone-field counts; MAP emitted only a bounded row count.
 
 ## Evidence
 
@@ -113,8 +113,8 @@ SCO cleanly torn down after hangup
 - MAP notification and HFP command validation still require guided iPhone interaction.
 
 ## Next action
-Run a sanitized MAP notification lifecycle test with the real iPhone. No message
-bodies, addresses, handles, or contacts may be retained.
+Run a sanitized MAP notification lifecycle test, then HFP commands, with the real
+iPhone. No message bodies, addresses, handles, or contacts may be retained.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing

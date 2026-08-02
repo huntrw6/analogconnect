@@ -36,4 +36,18 @@ aggregate state/counters API
   aggregate API behavior are covered by unit/API tests.
 - `DOCUMENTED`: imsg 0.3.1 IPC types and store source define Watch events,
   encrypted persistence, folder cursors, and sync behavior.
+- `VERIFIED_HARDWARE`: a bounded live iPhone inbox listing passed through the
+  aggregate-only validator with one row observed and no payload emitted.
 - `UNKNOWN`: real-iPhone notification delivery and recovery behavior.
+
+## Privacy-safe listing validation
+
+The validator consumes a bounded live listing through stdin and reports only a
+row count:
+
+```bash
+set -o pipefail
+imsg list inbox --limit 1 | cargo run --quiet --bin map-validate
+```
+
+No sender, handle, timestamp, or message preview is written by the validator.
