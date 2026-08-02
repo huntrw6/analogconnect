@@ -16,6 +16,8 @@ interpretations are superseded.
   mock transport; no live command has been sent to the iPhone.
 - Milestone 6 in-memory audio bridge queues and aggregate instrumentation are
   implemented; they are not yet connected to PipeWire or an Android transport.
+- The server-side Android control plane now requires bearer authentication for all
+  non-health endpoints and refuses startup without an explicit token.
 
 ## Current architecture
 
@@ -110,6 +112,16 @@ search, and caller matching. The Android application has not yet been implemente
   in-memory latency are tracked without recording audio.
 - `UNKNOWN`: PipeWire node binding, codec conversion, network transport latency,
   and intelligibility with real call audio.
+
+### Control-plane security
+
+- `VERIFIED_AUTOMATED`: all non-health API endpoints reject missing and incorrect
+  bearer credentials.
+- `VERIFIED_AUTOMATED`: token comparison is constant-time for equal-length inputs.
+- `VERIFIED_AUTOMATED`: token `Debug` output is redacted and token length is bounded.
+- `VERIFIED_AUTOMATED`: daemon startup fails when `ANALOGCONNECT_API_TOKEN` is absent.
+- `DOCUMENTED`: the OpenAPI contract marks health public and every other endpoint protected.
+- `UNKNOWN`: enrollment, rotation, revocation, TLS, and Android secure storage.
 
 ### MAP
 

@@ -11,9 +11,12 @@ the authoritative project status.
 
 ## Backend development
 
-Run the hardware-free daemon skeleton on its loopback-only default address:
+Set a private token of at least 32 bytes, then run the daemon on its loopback-only
+default address. Never commit the token or place it in shared shell history.
 
 ```bash
+read -rsp "AnalogConnect API token: " ANALOGCONNECT_API_TOKEN
+export ANALOGCONNECT_API_TOKEN
 cargo run -p analogconnectd
 ```
 
@@ -21,15 +24,16 @@ Then query:
 
 ```bash
 curl http://127.0.0.1:8787/api/v1/health
-curl http://127.0.0.1:8787/api/v1/status
-curl http://127.0.0.1:8787/api/v1/contacts/summary
-curl http://127.0.0.1:8787/api/v1/messages/summary
-curl http://127.0.0.1:8787/api/v1/audio/summary
+curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/status
+curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/contacts/summary
+curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/messages/summary
+curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/audio/summary
 ```
 
 The daemon includes a privacy-safe `imsg` PBAP adapter and SQLite contact store,
 but does not trigger hardware synchronization automatically or expose contact
-records through the unauthenticated API. It does not expose LAN control.
+records through the API. Every endpoint except health requires constant-time bearer
+authentication. The daemon does not expose LAN control.
 
 ## License
 

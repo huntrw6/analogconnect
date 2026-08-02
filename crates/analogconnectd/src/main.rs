@@ -1,6 +1,7 @@
 use std::{env, net::SocketAddr};
 
-use analogconnectd::{AppState, app};
+use analogconnect_core::SystemStatus;
+use analogconnectd::{AppState, app, auth::AuthToken};
 use tokio::net::TcpListener;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -18,6 +19,9 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let auth_token =
+        env::var("ANALOGCONNECT_API_TOKEN").map_err(|_| "ANALOGCONNECT_API_TOKEN is required")?;
+    let auth_token = AuthToken::new(auth_token)?;
     let listen_addr = env::var("ANALOGCONNECT_LISTEN_ADDR")
         .unwrap_or_else(|_| DEFAULT_LISTEN_ADDR.to_owned())
         .parse::<SocketAddr>()?;
@@ -30,9 +34,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "analogconnectd ready"
     );
 
-    axum::serve(listener, app(AppState::default()))
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app(AppState::new(SystemStatus::default(), auth_token)),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     info!(event = "daemon_stopped", "analogconnectd stopped cleanly");
     Ok(())

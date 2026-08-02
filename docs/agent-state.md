@@ -4,7 +4,7 @@
 Milestone 3 — MAP incoming synchronization — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
 
 ## Current phase
-Hardware-free PBAP, MAP, HFP control, and audio queue foundations — COMPLETE
+Hardware-free backend foundations and authenticated server control plane — COMPLETE
 
 ## Current objective
 Validate PBAP parsing and MAP notification behavior against the real iPhone under
@@ -14,9 +14,9 @@ privacy-controlled procedures, then proceed to outgoing MAP and HFP call control
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Milestone 6 software groundwork added redacted PCM frame types, bounded
-bidirectional queues, drop/latency accounting, an aggregate API, and a synthetic
-throughput benchmark. No audio is recorded.
+The control plane now requires a bounded bearer token, compares it in constant
+time, redacts it from debugging, refuses startup without configuration, and keeps
+only the health endpoint public.
 
 ## Evidence
 
