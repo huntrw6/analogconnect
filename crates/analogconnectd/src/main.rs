@@ -1,7 +1,10 @@
 use std::{env, net::SocketAddr};
 
 use analogconnect_core::SystemStatus;
-use analogconnectd::{AppState, app, auth::AuthToken};
+use analogconnectd::{
+    AppState, app,
+    auth::{AuthToken, AuthTokens},
+};
 use tokio::net::TcpListener;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -22,6 +25,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let auth_token =
         env::var("ANALOGCONNECT_API_TOKEN").map_err(|_| "ANALOGCONNECT_API_TOKEN is required")?;
     let auth_token = AuthToken::new(auth_token)?;
+    let auth_tokens = match env::var("ANALOGCONNECT_API_PREVIOUS_TOKEN") {
+        Ok(previous) => AuthTokens::with_previous(auth_token, AuthToken::new(previous)?),
+        Err(env::VarError::NotPresent) => AuthTokens::new(auth_token),
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err("ANALOGCONNECT_API_PREVIOUS_TOKEN is not valid Unicode".into());
+        }
+    };
     let listen_addr = env::var("ANALOGCONNECT_LISTEN_ADDR")
         .unwrap_or_else(|_| DEFAULT_LISTEN_ADDR.to_owned())
         .parse::<SocketAddr>()?;
@@ -37,7 +47,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     axum::serve(
         listener,
-        app(AppState::new(SystemStatus::default(), auth_token)),
+        app(AppState::new_with_tokens(
+            SystemStatus::default(),
+            auth_tokens,
+        )),
     )
     .with_graceful_shutdown(shutdown_signal())
     .await?;

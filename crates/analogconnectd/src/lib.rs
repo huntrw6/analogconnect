@@ -11,7 +11,7 @@ use std::{
 
 use analogconnect_core::SystemStatus;
 use audio::AudioBridgeSummary;
-use auth::{AuthToken, MutationLimiter};
+use auth::{AuthToken, AuthTokens, MutationLimiter};
 use axum::{
     Json, Router,
     body::Bytes,
@@ -33,7 +33,7 @@ pub struct AppState {
     contact_summary: Arc<RwLock<ContactSummary>>,
     message_summary: Arc<RwLock<MessageSyncSummary>>,
     audio_summary: Arc<RwLock<AudioBridgeSummary>>,
-    auth_token: Arc<AuthToken>,
+    auth_tokens: Arc<AuthTokens>,
     message_sender: Arc<dyn MapSendBackend>,
     call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
     mutation_limiter: Arc<MutationLimiter>,
@@ -42,9 +42,13 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(status: SystemStatus, auth_token: AuthToken) -> Self {
+        Self::new_with_tokens(status, AuthTokens::new(auth_token))
+    }
+
+    pub fn new_with_tokens(status: SystemStatus, auth_tokens: AuthTokens) -> Self {
         Self::with_backends(
             status,
-            auth_token,
+            auth_tokens,
             Arc::new(ImsgMapBackend::default()),
             Arc::new(WirePlumberBackend::new(BusctlRunner::default())),
         )
@@ -57,7 +61,7 @@ impl AppState {
     ) -> Self {
         Self::with_backends(
             status,
-            auth_token,
+            AuthTokens::new(auth_token),
             message_sender,
             Arc::new(WirePlumberBackend::new(BusctlRunner::default())),
         )
@@ -65,7 +69,7 @@ impl AppState {
 
     pub fn with_backends(
         status: SystemStatus,
-        auth_token: AuthToken,
+        auth_tokens: AuthTokens,
         message_sender: Arc<dyn MapSendBackend>,
         call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
     ) -> Self {
@@ -74,7 +78,7 @@ impl AppState {
             contact_summary: Arc::new(RwLock::new(ContactSummary::default())),
             message_summary: Arc::new(RwLock::new(MessageSyncSummary::default())),
             audio_summary: Arc::new(RwLock::new(AudioBridgeSummary::default())),
-            auth_token: Arc::new(auth_token),
+            auth_tokens: Arc::new(auth_tokens),
             message_sender,
             call_backend,
             mutation_limiter: Arc::new(MutationLimiter::new(10, Duration::from_secs(60))),
@@ -249,7 +253,7 @@ fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
         .and_then(|value| value.strip_prefix("Bearer "))
         .ok_or(StatusCode::UNAUTHORIZED)?;
     state
-        .auth_token
+        .auth_tokens
         .matches(candidate)
         .then_some(())
         .ok_or(StatusCode::UNAUTHORIZED)
@@ -319,7 +323,7 @@ mod tests {
     fn test_state() -> AppState {
         AppState::with_backends(
             SystemStatus::default(),
-            AuthToken::new(test_token_text()).unwrap(),
+            AuthTokens::new(AuthToken::new(test_token_text()).unwrap()),
             Arc::new(MockMessageSender {
                 calls: AtomicUsize::new(0),
             }),
@@ -581,6 +585,30 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn previous_token_remains_valid_during_staged_rotation() {
+        let current = "current-current-current-current-0001";
+        let previous = "previous-previous-previous-prev-0001";
+        let mut state = test_state();
+        state.auth_tokens = Arc::new(AuthTokens::with_previous(
+            AuthToken::new(current).unwrap(),
+            AuthToken::new(previous).unwrap(),
+        ));
+        for token in [current, previous] {
+            let response = app(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/v1/status")
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
         }
     }
 }

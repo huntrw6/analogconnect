@@ -172,6 +172,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
   restricted to loopback; non-loopback transport must use TLS/HTTPS.
 - `VERIFIED_AUTOMATED`: authenticated SMS/HFP mutations are rate-limited and emit
   only fixed payload-free acceptance audit events.
+- `VERIFIED_AUTOMATED`: staged current/previous bearer-token rotation supports
+  Android migration and explicit old-token revocation on daemon restart.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using
   Android Keystore AES/GCM and does not log tokens or response bodies.
 - `UNKNOWN`: enrollment issuance, rotation, revocation, TLS, and Keystore behavior

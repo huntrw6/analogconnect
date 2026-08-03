@@ -16,10 +16,21 @@
 Provide the token through `ANALOGCONNECT_API_TOKEN`. It is a credential and must
 not be committed, copied into diagnostics, or placed in a shared command history.
 
+## Staged token rotation
+
+1. Set the new credential as `ANALOGCONNECT_API_TOKEN`.
+2. Temporarily set the old credential as `ANALOGCONNECT_API_PREVIOUS_TOKEN`.
+3. Restart the daemon and update the Android enrollment to the new credential.
+4. Remove `ANALOGCONNECT_API_PREVIOUS_TOKEN` and restart to revoke the old token.
+
+Both tokens use the same validation and constant-time comparison policy. The token
+set evaluates both candidates without short-circuiting and its diagnostics are
+fully redacted. Rotation values must never be placed in repository files or logs.
+
 ## Remaining work
 
 - one-time Android enrollment
-- credential rotation and revocation
+- automatic expiration and one-time enrollment revocation
 - Android hardware-backed credential storage where available
 - authenticated WebSocket sessions
 - transport encryption and explicit LAN exposure policy
@@ -47,3 +58,6 @@ discipline while certificate provisioning is still pending.
 
 Pre-authentication credential-guessing controls remain pending and must avoid
 creating an unauthenticated global denial-of-service lever.
+
+- `VERIFIED_AUTOMATED`: staged current/previous credential rotation accepts both
+  during migration and removal of the previous environment value revokes it on restart.

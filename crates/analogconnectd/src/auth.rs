@@ -27,6 +27,46 @@ impl AuthToken {
     }
 }
 
+#[derive(Clone)]
+pub struct AuthTokens {
+    current: AuthToken,
+    previous: Option<AuthToken>,
+}
+
+impl AuthTokens {
+    #[must_use]
+    pub const fn new(current: AuthToken) -> Self {
+        Self {
+            current,
+            previous: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_previous(current: AuthToken, previous: AuthToken) -> Self {
+        Self {
+            current,
+            previous: Some(previous),
+        }
+    }
+
+    #[must_use]
+    pub fn matches(&self, candidate: &str) -> bool {
+        let current = self.current.matches(candidate);
+        let previous = self
+            .previous
+            .as_ref()
+            .is_some_and(|token| token.matches(candidate));
+        current | previous
+    }
+}
+
+impl std::fmt::Debug for AuthTokens {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AuthTokens([redacted])")
+    }
+}
+
 impl std::fmt::Debug for AuthToken {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("AuthToken([redacted])")
@@ -133,5 +173,21 @@ mod tests {
         assert!(limiter.allow_at(start + Duration::from_secs(1)).unwrap());
         assert!(!limiter.allow_at(start + Duration::from_secs(2)).unwrap());
         assert!(limiter.allow_at(start + Duration::from_secs(61)).unwrap());
+    }
+
+    #[test]
+    fn token_set_supports_staged_rotation_without_debug_disclosure() {
+        let current_text = "current-current-current-current-0001";
+        let previous_text = "previous-previous-previous-prev-0001";
+        let tokens = AuthTokens::with_previous(
+            AuthToken::new(current_text).unwrap(),
+            AuthToken::new(previous_text).unwrap(),
+        );
+        assert!(tokens.matches(current_text));
+        assert!(tokens.matches(previous_text));
+        assert!(!tokens.matches("wrong"));
+        let debug = format!("{tokens:?}");
+        assert!(!debug.contains(current_text));
+        assert!(!debug.contains(previous_text));
     }
 }
