@@ -38,6 +38,28 @@ fully redacted. Rotation values must never be placed in repository files or logs
 
 The bearer foundation is not permission to expose the daemon on a LAN yet.
 
+## Call-media session authorization
+
+Call media does not reuse the long-lived control-plane token. The server-side
+foundation issues a distinct 256-bit credential and 128-bit opaque session ID
+from the operating system random source. Grants last no more than five minutes,
+expire against a monotonic clock, and can be revoked immediately on call teardown.
+Presented credentials are strict fixed-length hexadecimal and their decoded bytes
+are compared in constant time.
+
+Enrollment and grant `Debug` output redact both values. Random-source and parsing
+errors are fixed classifications that contain no candidate material. The eventual
+TLS session endpoint must return enrollment material only once to an already
+authenticated client and must never log or persist it.
+
+- `VERIFIED_AUTOMATED`: deterministic fixtures cover correct, malformed, and
+  incorrect credentials; expiry, lifetime bounds, revocation, random-source
+  failure, and redaction.
+- `VERIFIED_AUTOMATED`: the Raspberry Pi operating-system source produces distinct
+  credentials that authorize their corresponding grants without printing them.
+- `UNKNOWN`: TLS delivery, connection binding, single-client enforcement, and
+  revocation during a real call.
+
 ## Enforced cleartext boundary
 
 - `VERIFIED_AUTOMATED`: every non-loopback `ANALOGCONNECT_LISTEN_ADDR` is rejected

@@ -42,4 +42,8 @@ ten-minute latency growth on the actual Android phone.
   aggregate loss, late, duplicate, and overflow accounting without logging samples.
 - `VERIFIED_AUTOMATED`: the Rust and Android API-27 implementations share a golden
   wire-header vector, proving byte-order and field-layout interoperability.
+- `VERIFIED_AUTOMATED`: media-session authorization uses distinct OS-random
+  256-bit credentials, opaque 128-bit IDs, a five-minute maximum lifetime,
+  monotonic expiry, immediate revocation, constant-time comparison, and redacted
+  diagnostics.
 - `UNKNOWN`: live transport benchmarks and the final RTP/Opus versus WebRTC choice.

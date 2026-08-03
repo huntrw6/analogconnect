@@ -2,6 +2,7 @@ pub mod audio;
 pub mod auth;
 pub mod contacts;
 pub mod hfp;
+pub mod media_auth;
 pub mod messages;
 
 use std::{

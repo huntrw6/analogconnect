@@ -190,6 +190,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
   only fixed payload-free acceptance audit events.
 - `VERIFIED_AUTOMATED`: staged current/previous bearer-token rotation supports
   Android migration and explicit old-token revocation on daemon restart.
+- `VERIFIED_AUTOMATED`: per-call media grants use separate OS-random credentials,
+  opaque session IDs, strict constant-time authorization, a five-minute maximum
+  lifetime, monotonic expiry, immediate revocation, and redacted diagnostics.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using
   Android Keystore AES/GCM and does not log tokens or response bodies.
 - `VERIFIED_HARDWARE`: manual enrollment persistence, authenticated daemon access,
