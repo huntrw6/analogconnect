@@ -92,6 +92,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AudioBridgeSummary"
+  /api/v1/audio/sessions:
+    post:
+      operationId: createAudioSession
+      security:
+        - bearerAuth: []
+      description: Issues one short-lived media credential only while a call and SCO transport are active.
+      responses:
+        "201":
+          description: One-time transient media enrollment material; clients must not persist or log it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaSessionResponse"
+        "409":
+          description: No active call with an active SCO transport.
+        "429":
+          description: The authenticated mutation quota is exhausted.
   /api/v1/calls/commands:
     post:
       operationId: executeCallCommand
@@ -321,3 +338,19 @@ components:
           $ref: "#/components/schemas/AudioQueueSummary"
         downlink:
           $ref: "#/components/schemas/AudioQueueSummary"
+    MediaSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [session_id, token, lifetime_seconds]
+      properties:
+        session_id:
+          type: string
+          pattern: "^[0-9a-f]{32}$"
+        token:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: Single-session bearer credential that must never be persisted or logged.
+        lifetime_seconds:
+          type: integer
+          minimum: 1
+          maximum: 300

@@ -199,6 +199,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: Android API-27 strictly validates the matching transient
   media credential shape and lifetime, uses monotonic expiry, and redacts all
   diagnostic output.
+- `VERIFIED_AUTOMATED`: an authenticated, mutation-limited media-session endpoint
+  issues a one-minute registry credential only while call and SCO states are both
+  active; the OpenAPI contract fixes its three-field response.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using
   Android Keystore AES/GCM and does not log tokens or response bodies.
 - `VERIFIED_HARDWARE`: manual enrollment persistence, authenticated daemon access,

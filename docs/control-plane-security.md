@@ -51,9 +51,15 @@ dropping a connection lease permits a reconnect while the grant remains valid.
 An existing lease observes expiry, replacement, or teardown revocation.
 
 Enrollment and grant `Debug` output redact both values. Random-source and parsing
-errors are fixed classifications that contain no candidate material. The eventual
-TLS session endpoint must return enrollment material only once to an already
-authenticated client and must never log or persist it.
+errors are fixed classifications that contain no candidate material. The session
+endpoint returns enrollment material only once to an already authenticated client
+and must never log or persist it.
+
+`POST /api/v1/audio/sessions` is the authenticated issuance boundary. It returns
+a one-minute enrollment only when the daemon state reports both an active call and
+active SCO, shares the authenticated mutation quota, and logs only a fixed event
+plus lifetime. The current plaintext server remains loopback-only, so this route
+does not authorize LAN exposure; it will move unchanged behind the TLS listener.
 
 - `VERIFIED_AUTOMATED`: deterministic fixtures cover correct, malformed, and
   incorrect credentials; expiry, lifetime bounds, revocation, random-source
@@ -66,6 +72,9 @@ authenticated client and must never log or persist it.
 - `VERIFIED_AUTOMATED`: the API-27 Android credential object accepts the exact
   server ID/token shape, enforces the same five-minute lifetime ceiling, expires
   against a caller-supplied monotonic clock, and redacts diagnostics and errors.
+- `VERIFIED_AUTOMATED`: the issuance endpoint rejects inactive call/SCO state,
+  requires bearer authentication, returns only the three contract fields, and
+  produces a credential that the server registry can claim.
 - `UNKNOWN`: TLS delivery, network-connection binding, and revocation during a
   real call.
 

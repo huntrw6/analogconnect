@@ -22,6 +22,7 @@ use axum::{
 };
 use contacts::ContactSummary;
 use hfp::{BusctlRunner, HfpCommandBackend, WirePlumberBackend, WirePlumberBackendError};
+use media_auth::{MediaSessionRegistry, OsRandomSource};
 use messages::{ImsgMapBackend, MapSendBackend, MessageSyncSummary, OutboundMessage};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -38,6 +39,7 @@ pub struct AppState {
     message_sender: Arc<dyn MapSendBackend>,
     call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
     mutation_limiter: Arc<MutationLimiter>,
+    media_sessions: Arc<MediaSessionRegistry>,
     started_at: Instant,
 }
 
@@ -83,6 +85,7 @@ impl AppState {
             message_sender,
             call_backend,
             mutation_limiter: Arc::new(MutationLimiter::new(10, Duration::from_secs(60))),
+            media_sessions: Arc::new(MediaSessionRegistry::new()),
             started_at: Instant::now(),
         }
     }
@@ -108,6 +111,10 @@ pub fn app(state: AppState) -> Router {
             axum::routing::post(execute_call_command),
         )
         .route("/api/v1/audio/summary", get(audio_summary))
+        .route(
+            "/api/v1/audio/sessions",
+            axum::routing::post(create_audio_session),
+        )
         .with_state(state)
 }
 
@@ -245,6 +252,44 @@ async fn audio_summary(
 ) -> Result<Json<AudioBridgeSummary>, StatusCode> {
     authorize(&state, &headers)?;
     Ok(Json(state.audio_summary.read().await.clone()))
+}
+
+#[derive(Serialize)]
+struct MediaSessionResponse {
+    session_id: String,
+    token: String,
+    lifetime_seconds: u64,
+}
+
+async fn create_audio_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, Json<MediaSessionResponse>), StatusCode> {
+    use analogconnect_core::{AudioTransportState, CallState};
+
+    authorize(&state, &headers)?;
+    authorize_mutation(&state)?;
+    let status = state.status.read().await;
+    if status.call != CallState::Active || status.audio != AudioTransportState::ScoActive {
+        return Err(StatusCode::CONFLICT);
+    }
+    drop(status);
+
+    let enrollment = state
+        .media_sessions
+        .issue(&mut OsRandomSource, Duration::from_secs(60))
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let response = MediaSessionResponse {
+        session_id: enrollment.session_id().to_owned(),
+        token: enrollment.token().to_owned(),
+        lifetime_seconds: enrollment.lifetime_seconds(),
+    };
+    tracing::info!(
+        event = "media_session_issued",
+        lifetime_seconds = response.lifetime_seconds,
+        "media session issued"
+    );
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
@@ -550,6 +595,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn media_session_requires_active_call_and_sco() {
+        let response = app(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/audio/sessions")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert!(
+            to_bytes(response.into_body(), 1024)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn media_session_response_is_bounded_and_claimable() {
+        use analogconnect_core::{AudioTransportState, CallState};
+
+        let state = test_state();
+        {
+            let mut status = state.status.write().await;
+            status.call = CallState::Active;
+            status.audio = AudioTransportState::ScoActive;
+        }
+        let response = app(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/audio/sessions")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json.as_object().unwrap().len(), 3);
+        assert_eq!(json["session_id"].as_str().unwrap().len(), 32);
+        assert_eq!(json["token"].as_str().unwrap().len(), 64);
+        assert_eq!(json["lifetime_seconds"], 60);
+        assert!(
+            state
+                .media_sessions
+                .claim(
+                    json["session_id"].as_str().unwrap(),
+                    json["token"].as_str().unwrap(),
+                    Instant::now()
+                )
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
     async fn non_health_endpoints_require_authentication() {
         for (method, uri) in [
             ("GET", "/api/v1/status"),
@@ -558,6 +665,7 @@ mod tests {
             ("POST", "/api/v1/messages"),
             ("POST", "/api/v1/calls/commands"),
             ("GET", "/api/v1/audio/summary"),
+            ("POST", "/api/v1/audio/sessions"),
         ] {
             let response = app(test_state())
                 .oneshot(
