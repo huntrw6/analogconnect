@@ -4,11 +4,14 @@ pub mod contacts;
 pub mod hfp;
 pub mod messages;
 
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use analogconnect_core::SystemStatus;
 use audio::AudioBridgeSummary;
-use auth::AuthToken;
+use auth::{AuthToken, MutationLimiter};
 use axum::{
     Json, Router,
     body::Bytes,
@@ -33,6 +36,7 @@ pub struct AppState {
     auth_token: Arc<AuthToken>,
     message_sender: Arc<dyn MapSendBackend>,
     call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
+    mutation_limiter: Arc<MutationLimiter>,
     started_at: Instant,
 }
 
@@ -73,6 +77,7 @@ impl AppState {
             auth_token: Arc::new(auth_token),
             message_sender,
             call_backend,
+            mutation_limiter: Arc::new(MutationLimiter::new(10, Duration::from_secs(60))),
             started_at: Instant::now(),
         }
     }
@@ -145,6 +150,7 @@ async fn send_message(
     body: Bytes,
 ) -> Result<(StatusCode, Json<SendMessageResponse>), StatusCode> {
     authorize(&state, &headers)?;
+    authorize_mutation(&state)?;
     if body.len() > 4096 {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
@@ -161,6 +167,7 @@ async fn send_message(
         StatusCode::ACCEPTED,
         Json(SendMessageResponse { accepted: true }),
     ))
+    .inspect(|_| tracing::info!(event = "message_send_accepted", "message command accepted"))
 }
 
 #[derive(Deserialize)]
@@ -208,6 +215,7 @@ async fn execute_call_command(
     body: Bytes,
 ) -> Result<(StatusCode, Json<CallCommandResponse>), StatusCode> {
     authorize(&state, &headers)?;
+    authorize_mutation(&state)?;
     if body.len() > 1024 {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
@@ -223,6 +231,7 @@ async fn execute_call_command(
         StatusCode::ACCEPTED,
         Json(CallCommandResponse { accepted: true }),
     ))
+    .inspect(|_| tracing::info!(event = "call_command_accepted", "call command accepted"))
 }
 
 async fn audio_summary(
@@ -244,6 +253,14 @@ fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
         .matches(candidate)
         .then_some(())
         .ok_or(StatusCode::UNAUTHORIZED)
+}
+
+fn authorize_mutation(state: &AppState) -> Result<(), StatusCode> {
+    match state.mutation_limiter.allow() {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(StatusCode::TOO_MANY_REQUESTS),
+        Err(_) => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
 }
 
 #[cfg(test)]
@@ -444,6 +461,33 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let body = to_bytes(response.into_body(), 1024).await.unwrap();
         assert!(!String::from_utf8_lossy(&body).contains(private_body));
+    }
+
+    #[tokio::test]
+    async fn authenticated_mutations_are_rate_limited() {
+        let application = app(test_state());
+        for attempt in 0..11 {
+            let response = application
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/v1/messages")
+                        .header("authorization", format!("Bearer {}", test_token_text()))
+                        .body(Body::from(
+                            r#"{"recipient":"5550100","body":"synthetic message"}"#,
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let expected = if attempt < 10 {
+                StatusCode::ACCEPTED
+            } else {
+                StatusCode::TOO_MANY_REQUESTS
+            };
+            assert_eq!(response.status(), expected);
+        }
     }
 
     #[tokio::test]

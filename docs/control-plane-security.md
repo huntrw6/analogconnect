@@ -23,7 +23,7 @@ not be committed, copied into diagnostics, or placed in a shared command history
 - Android hardware-backed credential storage where available
 - authenticated WebSocket sessions
 - transport encryption and explicit LAN exposure policy
-- rate limiting and audit events that contain no private payloads
+- credential-guessing rate limits before authentication
 
 The bearer foundation is not permission to expose the daemon on a LAN yet.
 
@@ -36,3 +36,14 @@ The bearer foundation is not permission to expose the daemon on a LAN yet.
 
 This makes the LAN restriction fail closed rather than relying only on operator
 discipline while certificate provisioning is still pending.
+
+## Mutation abuse controls
+
+- `VERIFIED_AUTOMATED`: authenticated SMS and HFP mutations share a bounded quota
+  of ten accepted attempts per sixty-second window; excess requests receive 429.
+- `VERIFIED_AUTOMATED`: the limiter stores only timestamps and aggregate counts.
+- `VERIFIED_AUTOMATED`: successful mutation audit events contain only a fixed event
+  name and never recipient, body, dial target, DTMF, or call identity fields.
+
+Pre-authentication credential-guessing controls remain pending and must avoid
+creating an unauthenticated global denial-of-service lever.
