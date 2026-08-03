@@ -70,6 +70,8 @@ from the mutable IP address.
 - `VERIFIED_HARDWARE`: the Android 8.1 phone resolved the Avahi service, retained
   `operat.local` as the TLS identity, connected by the resolved IP, verified the
   pinned certificate, and authenticated without modifying the saved token.
+- `VERIFIED_HARDWARE`: foreground discovery replaced a deliberately stale saved
+  routing address with the current NSD result without user entry.
 - `UNKNOWN`: reconnect after a real DHCP address change.
 
 ## Staged token rotation

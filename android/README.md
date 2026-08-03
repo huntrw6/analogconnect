@@ -9,6 +9,8 @@ Non-loopback endpoints require HTTPS and an explicitly enrolled SHA-256 leaf
 certificate pin. The pin is not a credential, but diagnostics still redact it.
 Saving endpoint or certificate changes with an empty token field preserves the
 existing encrypted token. Clearing it requires the separate confirmed action.
+The client refreshes `_analogconnect._tcp` discovery whenever it enters the
+foreground, replacing a stale saved routing address without changing credentials.
 
 The APK declares microphone/audio-routing permissions for the call-audio milestone,
 but the current UI never requests microphone permission or starts capture. The
