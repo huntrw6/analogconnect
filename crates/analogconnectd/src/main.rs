@@ -1,4 +1,4 @@
-use std::{env, net::SocketAddr};
+use std::{env, net::SocketAddr, path::PathBuf, time::Duration};
 
 use analogconnect_core::SystemStatus;
 use analogconnectd::{
@@ -10,6 +10,17 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:8787";
+const TLS_CERT_ENV: &str = "ANALOGCONNECT_TLS_CERT_PATH";
+const TLS_KEY_ENV: &str = "ANALOGCONNECT_TLS_KEY_PATH";
+
+#[derive(Debug, Eq, PartialEq)]
+enum ListenerMode {
+    Plaintext,
+    Tls {
+        cert_path: PathBuf,
+        key_path: PathBuf,
+    },
+}
 
 #[tokio::main]
 async fn main() {
@@ -35,33 +46,112 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listen_addr = env::var("ANALOGCONNECT_LISTEN_ADDR")
         .unwrap_or_else(|_| DEFAULT_LISTEN_ADDR.to_owned())
         .parse::<SocketAddr>()?;
-    validate_listen_addr(listen_addr)?;
-    let listener = TcpListener::bind(listen_addr).await?;
+    let listener_mode = listener_mode(
+        optional_env(TLS_CERT_ENV)?,
+        optional_env(TLS_KEY_ENV)?,
+        listen_addr,
+    )?;
+    let router = app(AppState::new_with_tokens(
+        SystemStatus::default(),
+        auth_tokens,
+    ));
 
-    info!(
-        event = "daemon_started",
-        listen_addr = %listen_addr,
-        protocol_version = 1_u16,
-        "analogconnectd ready"
-    );
-
-    axum::serve(
-        listener,
-        app(AppState::new_with_tokens(
-            SystemStatus::default(),
-            auth_tokens,
-        )),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await?;
+    match listener_mode {
+        ListenerMode::Plaintext => {
+            let listener = TcpListener::bind(listen_addr).await?;
+            log_started(listen_addr, ListenerMode::Plaintext.transport_name());
+            axum::serve(listener, router)
+                .with_graceful_shutdown(shutdown_signal())
+                .await?;
+        }
+        ListenerMode::Tls {
+            cert_path,
+            key_path,
+        } => {
+            validate_private_key_file(&key_path)?;
+            let tls_config =
+                axum_server::tls_rustls::RustlsConfig::from_pem_file(cert_path, key_path)
+                    .await
+                    .map_err(|_| "TLS certificate or private key could not be loaded")?;
+            let listener = std::net::TcpListener::bind(listen_addr)?;
+            listener.set_nonblocking(true)?;
+            let handle = axum_server::Handle::new();
+            let shutdown_handle = handle.clone();
+            tokio::spawn(async move {
+                shutdown_signal().await;
+                shutdown_handle.graceful_shutdown(Some(Duration::from_secs(10)));
+            });
+            log_started(listen_addr, "https");
+            axum_server::from_tcp_rustls(listener, tls_config)?
+                .handle(handle)
+                .serve(router.into_make_service())
+                .await?;
+        }
+    }
 
     info!(event = "daemon_stopped", "analogconnectd stopped cleanly");
     Ok(())
 }
 
-fn validate_listen_addr(listen_addr: SocketAddr) -> Result<(), &'static str> {
-    if !listen_addr.ip().is_loopback() {
-        return Err("plaintext listener must use a loopback address; non-loopback requires TLS");
+fn log_started(listen_addr: SocketAddr, transport: &'static str) {
+    info!(
+        event = "daemon_started",
+        listen_addr = %listen_addr,
+        transport,
+        protocol_version = 1_u16,
+        "analogconnectd ready"
+    );
+}
+
+impl ListenerMode {
+    const fn transport_name(&self) -> &'static str {
+        match self {
+            Self::Plaintext => "http",
+            Self::Tls { .. } => "https",
+        }
+    }
+}
+
+fn optional_env(name: &'static str) -> Result<Option<String>, &'static str> {
+    match env::var(name) {
+        Ok(value) if value.is_empty() => Err("TLS path environment variables must not be empty"),
+        Ok(value) => Ok(Some(value)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => {
+            Err("TLS path environment variables must be valid Unicode")
+        }
+    }
+}
+
+fn listener_mode(
+    cert_path: Option<String>,
+    key_path: Option<String>,
+    listen_addr: SocketAddr,
+) -> Result<ListenerMode, &'static str> {
+    match (cert_path, key_path) {
+        (None, None) if listen_addr.ip().is_loopback() => Ok(ListenerMode::Plaintext),
+        (None, None) => {
+            Err("plaintext listener must use a loopback address; non-loopback requires TLS")
+        }
+        (Some(cert_path), Some(key_path)) => Ok(ListenerMode::Tls {
+            cert_path: cert_path.into(),
+            key_path: key_path.into(),
+        }),
+        _ => Err("both TLS certificate and private key paths are required"),
+    }
+}
+
+fn validate_private_key_file(key_path: &std::path::Path) -> Result<(), &'static str> {
+    let metadata = std::fs::metadata(key_path).map_err(|_| "TLS private key is not readable")?;
+    if !metadata.is_file() {
+        return Err("TLS private key must be a regular file");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return Err("TLS private key permissions must deny group and other access");
+        }
     }
     Ok(())
 }
@@ -109,10 +199,38 @@ mod tests {
     #[test]
     fn plaintext_listener_is_restricted_to_loopback() {
         for address in ["127.0.0.1:8787", "[::1]:8787"] {
-            assert!(validate_listen_addr(address.parse().unwrap()).is_ok());
+            assert_eq!(
+                listener_mode(None, None, address.parse().unwrap()).unwrap(),
+                ListenerMode::Plaintext
+            );
         }
         for address in ["0.0.0.0:8787", "192.168.1.10:8787", "[::]:8787"] {
-            assert!(validate_listen_addr(address.parse().unwrap()).is_err());
+            assert!(listener_mode(None, None, address.parse().unwrap()).is_err());
         }
+    }
+
+    #[test]
+    fn tls_listener_accepts_loopback_and_lan_addresses() {
+        for address in ["127.0.0.1:8787", "192.168.1.10:8787", "[::]:8787"] {
+            assert_eq!(
+                listener_mode(
+                    Some("cert.pem".to_owned()),
+                    Some("key.pem".to_owned()),
+                    address.parse().unwrap(),
+                )
+                .unwrap(),
+                ListenerMode::Tls {
+                    cert_path: "cert.pem".into(),
+                    key_path: "key.pem".into(),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn partial_tls_configuration_is_rejected() {
+        let address = "127.0.0.1:8787".parse().unwrap();
+        assert!(listener_mode(Some("cert.pem".to_owned()), None, address).is_err());
+        assert!(listener_mode(None, Some("key.pem".to_owned()), address).is_err());
     }
 }

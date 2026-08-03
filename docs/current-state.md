@@ -198,6 +198,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `DOCUMENTED`: the OpenAPI contract marks health public and every other endpoint protected.
 - `VERIFIED_AUTOMATED`: plaintext daemon binds and Android HTTP endpoints are
   restricted to loopback; non-loopback transport must use TLS/HTTPS.
+- `VERIFIED_AUTOMATED`: complete certificate/key configuration selects an
+  HTTPS-only listener that may bind an explicit LAN address; partial configuration,
+  invalid PEM data, and group/other-readable Unix private keys fail closed.
 - `VERIFIED_AUTOMATED`: Android certificate-pin parsing, constant-time SHA-256
   matching, redaction, and pinned TLS trust-manager packaging pass API-27 checks.
 - `VERIFIED_AUTOMATED`: authenticated SMS/HFP mutations are rate-limited and emit
@@ -234,8 +237,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_HARDWARE`: manual enrollment persistence, authenticated daemon access,
   staged short-token testing, and certificate-pin UI behavior work on the real
   Android 8.1 phone through the development ADB tunnel.
-- `UNKNOWN`: one-time enrollment issuance, automatic expiration, real LAN TLS,
-  and hardware-backed Keystore availability on this phone.
+- `UNKNOWN`: one-time enrollment issuance, automatic expiration, real
+  Android-to-Pi LAN TLS, and hardware-backed Keystore availability on this phone.
 
 ### Android client
 
@@ -249,7 +252,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
   authenticated status, and confirmed outbound-message UI behavior work on the
   real phone.
 - `VERIFIED_HARDWARE`: phone-to-Pi control requests work through an ADB reverse
-  loopback tunnel. Direct LAN transport remains disabled until TLS is implemented.
+  loopback tunnel. Direct LAN transport now has a TLS implementation but still
+  requires certificate provisioning and real-phone validation.
 
 ### MAP
 

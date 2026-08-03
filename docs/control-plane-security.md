@@ -9,12 +9,31 @@
 - Tokens are redacted from `Debug` output and are never logged.
 - The daemon refuses to start when no token is configured.
 - The plaintext listener is restricted to loopback; non-loopback addresses fail startup.
+- Providing both TLS path variables switches the listener to HTTPS and permits an
+  explicitly configured LAN bind address.
+- Partial TLS configuration, unreadable/invalid PEM data, and insecure Unix
+  private-key permissions fail startup.
 - Android accepts cleartext HTTP only for loopback and requires HTTPS elsewhere.
 
 ## Configuration
 
 Provide the token through `ANALOGCONNECT_API_TOKEN`. It is a credential and must
 not be committed, copied into diagnostics, or placed in a shared command history.
+
+The default remains plaintext on `127.0.0.1:8787`. To enable HTTPS, set both:
+
+- `ANALOGCONNECT_TLS_CERT_PATH`: PEM leaf certificate followed by any intermediate
+  certificates needed by clients.
+- `ANALOGCONNECT_TLS_KEY_PATH`: matching PEM private key. On Unix it must be a
+  regular file with no group or other permission bits (for example mode `0600`).
+
+Then set `ANALOGCONNECT_LISTEN_ADDR` to the exact desired socket address. The
+daemon never enables a second plaintext listener and never infers LAN exposure.
+The certificate must contain the endpoint hostname or IP address in its Subject
+Alternative Name and chain to a CA trusted by Android. Enter the 64-character
+SHA-256 digest of the leaf certificate's DER encoding in the Android enrollment
+screen. Certificate and key provisioning are intentionally operator-owned;
+neither is generated or copied by the daemon.
 
 ## Staged token rotation
 
@@ -33,10 +52,10 @@ fully redacted. Rotation values must never be placed in repository files or logs
 - automatic expiration and one-time enrollment revocation
 - Android hardware-backed credential storage where available
 - authenticated WebSocket sessions
-- transport encryption and explicit LAN exposure policy
 - credential-guessing rate limits before authentication
 
-The bearer foundation is not permission to expose the daemon on a LAN yet.
+Bearer authentication alone is not permission to expose the daemon on a LAN;
+the complete TLS configuration and a correctly provisioned certificate are required.
 
 ## Call-media session authorization
 
@@ -82,13 +101,16 @@ the Android HTTP client also disables URL caching and sends a no-store request.
   requires HTTP 201, bounds the response to 1 KiB, rejects missing or extra fields,
   validates all values, and timestamps expiry with Android's monotonic clock. The
   transient result is returned only in memory and is never logged or persisted.
-- `UNKNOWN`: TLS delivery, network-connection binding, and revocation during a
-  real call.
+- `VERIFIED_AUTOMATED`: HTTPS listener selection, explicit LAN binding, partial
+  configuration rejection, and private-key permission checks.
+- `UNKNOWN`: Android-to-Pi HTTPS on the real LAN, network-connection binding, and
+  revocation during a real call.
 
 ## Enforced cleartext boundary
 
 - `VERIFIED_AUTOMATED`: every non-loopback `ANALOGCONNECT_LISTEN_ADDR` is rejected
-  while the daemon has no TLS listener.
+  unless both TLS path variables are present; complete TLS configuration selects
+  an HTTPS-only listener.
 - `VERIFIED_AUTOMATED`: Android accepts `http://` only for `localhost`,
   `127.0.0.1`, or `::1`; all other endpoint hosts must use `https://`.
 - `VERIFIED_AUTOMATED`: Android HTTPS requires an enrolled SHA-256 leaf-certificate

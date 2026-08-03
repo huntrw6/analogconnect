@@ -33,7 +33,9 @@ curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/a
 The daemon includes a privacy-safe `imsg` PBAP adapter and SQLite contact store,
 but does not trigger hardware synchronization automatically or expose contact
 records through the API. Every endpoint except health requires constant-time bearer
-authentication. The daemon does not expose LAN control.
+authentication. Plaintext remains loopback-only. See
+[`docs/control-plane-security.md`](docs/control-plane-security.md) for the explicit
+HTTPS configuration required before binding to a LAN address.
 
 ## License
 
