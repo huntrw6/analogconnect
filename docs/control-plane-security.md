@@ -30,10 +30,23 @@ The default remains plaintext on `127.0.0.1:8787`. To enable HTTPS, set both:
 Then set `ANALOGCONNECT_LISTEN_ADDR` to the exact desired socket address. The
 daemon never enables a second plaintext listener and never infers LAN exposure.
 The certificate must contain the endpoint hostname or IP address in its Subject
-Alternative Name and chain to a CA trusted by Android. Enter the 64-character
-SHA-256 digest of the leaf certificate's DER encoding in the Android enrollment
-screen. Certificate and key provisioning are intentionally operator-owned;
-neither is generated or copied by the daemon.
+Alternative Name. Android treats the explicitly enrolled leaf pin as the trust
+anchor, checks the leaf validity period, and retains the platform hostname check;
+the leaf does not also need to chain to a platform-trusted CA. Enter the
+64-character SHA-256 digest of the leaf certificate's DER encoding in the Android
+enrollment screen.
+
+Provision a new private leaf outside the repository with:
+
+```bash
+scripts/tls-provision.sh --output /private/path/analogconnect-tls \
+  --host 192.0.2.10
+```
+
+Use the Pi's actual stable LAN address instead of the documentation-only example.
+The tool refuses existing or repository-local output, supports repeated `--host`
+arguments, creates a mode-`0600` key, and prints the leaf pin. Certificate rotation
+requires generating a new leaf and explicitly replacing the Android enrollment pin.
 
 ## Staged token rotation
 
@@ -48,7 +61,7 @@ fully redacted. Rotation values must never be placed in repository files or logs
 
 ## Remaining work
 
-- one-time Android enrollment
+- one-time Android enrollment authorization
 - automatic expiration and one-time enrollment revocation
 - Android hardware-backed credential storage where available
 - authenticated WebSocket sessions
@@ -114,8 +127,9 @@ the Android HTTP client also disables URL caching and sends a no-store request.
 - `VERIFIED_AUTOMATED`: Android accepts `http://` only for `localhost`,
   `127.0.0.1`, or `::1`; all other endpoint hosts must use `https://`.
 - `VERIFIED_AUTOMATED`: Android HTTPS requires an enrolled SHA-256 leaf-certificate
-  pin, uses constant-time digest comparison, checks certificate validity dates,
-  retains platform hostname verification, and redacts pin diagnostics.
+  pin as its explicit trust anchor, uses constant-time digest comparison, checks
+  certificate validity dates, retains platform hostname verification, and redacts
+  pin diagnostics.
 
 This makes the LAN restriction fail closed rather than relying only on operator
 discipline while certificate provisioning is still pending.

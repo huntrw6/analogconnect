@@ -12,9 +12,10 @@ The APK declares microphone/audio-routing permissions for the call-audio milesto
 but the current UI never requests microphone permission or starts capture. The
 audio device adapter remains inactive until a short-lived media transport exists.
 
-The Raspberry Pi daemon is still loopback-bound, so phone-to-Pi networking is
-not enabled in the current milestone. Installing and launching this APK checks
-only Android toolchain and device compatibility.
+The Raspberry Pi daemon defaults to loopback. It permits an explicitly configured
+LAN listener only when both TLS certificate paths are present; the Android client
+then requires the enrolled leaf pin and a matching certificate hostname or IP SAN.
+See `docs/control-plane-security.md` for provisioning and enrollment.
 
 ## Build
 
