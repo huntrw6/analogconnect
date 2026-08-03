@@ -123,6 +123,13 @@ owners so capture and playback workers do not share a lock or audio buffer.
 - `VERIFIED_AUTOMATED`: SCO discovery fixtures return only a numeric source/sink
   serial pair, ignore private properties, and fail closed on missing or ambiguous
   nodes.
+- `VERIFIED_AUTOMATED`: runtime audio status requires both an exact SCO node pair
+  and WirePlumber's live AudioGateway transport state, preventing stale nodes
+  alone from authorizing call media.
+- `VERIFIED_HARDWARE`: active iPhone calls produced exactly one source/sink pair
+  and an active gateway transport.
+- `FAILED`: SCO remained active after one Pi-originated hangup and required an
+  HFP-profile cycle; automatic recovery for this condition remains pending.
 - `VERIFIED_AUTOMATED`: capture/playback command construction binds the correct
   source/sink direction for both HFP rates, fixes mono signed-16-bit framing and
   7.5 ms latency, and rejects non-HFP formats.

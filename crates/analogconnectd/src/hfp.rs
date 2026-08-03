@@ -1,6 +1,6 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
 
-use analogconnect_core::{CallCommand, CallState, Gain, HfpControlState};
+use analogconnect_core::{AudioTransportState, CallCommand, CallState, Gain, HfpControlState};
 use thiserror::Error;
 
 use crate::process::run_bounded;
@@ -21,6 +21,7 @@ pub trait HfpStateBackend: Send + Sync {
 pub struct HfpStatusSnapshot {
     pub control: HfpControlState,
     pub call: CallState,
+    pub transport: AudioTransportState,
 }
 
 pub trait AtTransport: Send + Sync {
@@ -32,16 +33,20 @@ pub trait AtTransport: Send + Sync {
 
 const TELEPHONY_SERVICE: &str = "org.pipewire.Telephony";
 const TELEPHONY_ROOT: &str = "/org/pipewire/Telephony";
+const OBJECT_MANAGER_INTERFACE: &str = "org.freedesktop.DBus.ObjectManager";
 const AUDIO_GATEWAY_INTERFACE: &str = "org.pipewire.Telephony.AudioGateway1";
+const AUDIO_GATEWAY_TRANSPORT_INTERFACE: &str = "org.pipewire.Telephony.AudioGatewayTransport1";
 const CALL_INTERFACE: &str = "org.pipewire.Telephony.Call1";
+const OFONO_VOICE_CALL_MANAGER_INTERFACE: &str = "org.ofono.VoiceCallManager";
+const OFONO_VOICE_CALL_INTERFACE: &str = "org.ofono.VoiceCall";
 const HELPER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const MAX_HELPER_OUTPUT_BYTES: usize = 1024 * 1024;
 
 pub trait DbusCommandRunner: Send + Sync {
     type Error;
 
-    /// Runs busctl without logging arguments or output. Output may contain only
-    /// WirePlumber's numeric telephony object paths and must not be persisted.
+    /// Runs busctl without logging arguments or output. Object-manager output may
+    /// contain private properties and must be reduced immediately to numeric paths.
     fn run(&self, arguments: &[&str]) -> Result<String, Self::Error>;
 }
 
@@ -111,9 +116,31 @@ where
     fn paths(&self) -> Result<TelephonyPaths, WirePlumberBackendError> {
         let output = self
             .runner
-            .run(&["--user", "tree", TELEPHONY_SERVICE])
+            .run(&[
+                "--json=short",
+                "--user",
+                "call",
+                TELEPHONY_SERVICE,
+                TELEPHONY_ROOT,
+                OBJECT_MANAGER_INTERFACE,
+                "GetManagedObjects",
+            ])
             .map_err(|_| WirePlumberBackendError::Unavailable)?;
-        TelephonyPaths::parse(&output)
+        let mut paths = TelephonyPaths::parse_managed_objects(&output)?;
+        let calls = self
+            .runner
+            .run(&[
+                "--json=short",
+                "--user",
+                "call",
+                TELEPHONY_SERVICE,
+                &paths.gateway,
+                OFONO_VOICE_CALL_MANAGER_INTERFACE,
+                "GetCalls",
+            ])
+            .map_err(|_| WirePlumberBackendError::Unavailable)?;
+        paths.replace_calls(&calls)?;
+        Ok(paths)
     }
 
     fn call(
@@ -139,11 +166,30 @@ where
                 "get-property",
                 TELEPHONY_SERVICE,
                 path,
-                CALL_INTERFACE,
+                OFONO_VOICE_CALL_INTERFACE,
                 "State",
             ])
             .map_err(|_| WirePlumberBackendError::Unavailable)?;
         LiveCallState::parse(&output).ok_or(WirePlumberBackendError::Ambiguous)
+    }
+
+    fn transport_state(&self, path: &str) -> Result<AudioTransportState, WirePlumberBackendError> {
+        let output = self
+            .runner
+            .run(&[
+                "--user",
+                "get-property",
+                TELEPHONY_SERVICE,
+                path,
+                AUDIO_GATEWAY_TRANSPORT_INTERFACE,
+                "State",
+            ])
+            .map_err(|_| WirePlumberBackendError::Unavailable)?;
+        match output.trim() {
+            "s \"active\"" => Ok(AudioTransportState::ScoActive),
+            "s \"idle\"" => Ok(AudioTransportState::Inactive),
+            _ => Err(WirePlumberBackendError::Ambiguous),
+        }
     }
 }
 
@@ -215,6 +261,7 @@ where
         Ok(HfpStatusSnapshot {
             control: HfpControlState::SlcReady,
             call: aggregate_call_state(&states),
+            transport: self.transport_state(&paths.gateway)?,
         })
     }
 }
@@ -268,11 +315,25 @@ struct TelephonyPaths {
 }
 
 impl TelephonyPaths {
-    fn parse(output: &str) -> Result<Self, WirePlumberBackendError> {
+    fn parse_managed_objects(output: &str) -> Result<Self, WirePlumberBackendError> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct BusctlReply {
+            #[serde(rename = "type")]
+            signature: String,
+            data: Vec<BTreeMap<String, serde::de::IgnoredAny>>,
+        }
+
+        let reply: BusctlReply =
+            serde_json::from_str(output).map_err(|_| WirePlumberBackendError::Ambiguous)?;
+        if reply.signature != "a{oa{sa{sv}}}" || reply.data.len() != 1 {
+            return Err(WirePlumberBackendError::Ambiguous);
+        }
         let mut gateways = Vec::new();
         let mut calls = Vec::new();
-        for token in output.split_whitespace() {
-            let Some(path) = token.strip_prefix(TELEPHONY_ROOT) else {
+        let objects = reply.data.into_iter().next().unwrap();
+        for object_path in objects.keys() {
+            let Some(path) = object_path.strip_prefix(TELEPHONY_ROOT) else {
                 continue;
             };
             if let Some(id) = path.strip_prefix("/ag")
@@ -308,6 +369,37 @@ impl TelephonyPaths {
         let gateway = gateways.remove(0);
         calls.retain(|call| call.starts_with(&format!("{gateway}/call")));
         Ok(Self { gateway, calls })
+    }
+
+    fn replace_calls(&mut self, output: &str) -> Result<(), WirePlumberBackendError> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct BusctlReply {
+            #[serde(rename = "type")]
+            signature: String,
+            data: Vec<BTreeMap<String, serde::de::IgnoredAny>>,
+        }
+
+        let reply: BusctlReply =
+            serde_json::from_str(output).map_err(|_| WirePlumberBackendError::Ambiguous)?;
+        if reply.signature != "a{oa{sv}}" || reply.data.len() != 1 {
+            return Err(WirePlumberBackendError::Ambiguous);
+        }
+        let call_prefix = format!("{}/call", self.gateway);
+        let objects = reply.data.into_iter().next().unwrap();
+        let mut calls = Vec::new();
+        for object_path in objects.keys() {
+            let Some(id) = object_path.strip_prefix(&call_prefix) else {
+                continue;
+            };
+            if !id.is_empty() && id.chars().all(|character| character.is_ascii_digit()) {
+                calls.push(object_path.clone());
+            }
+        }
+        calls.sort();
+        calls.dedup();
+        self.calls = calls;
+        Ok(())
     }
 
     fn only_call(&self) -> Result<&str, WirePlumberBackendError> {
@@ -607,7 +699,9 @@ mod tests {
 
     struct MockDbusRunner {
         tree: String,
+        calls: String,
         state: String,
+        transport_state: String,
         commands: Mutex<Vec<Vec<String>>>,
         succeeds: bool,
     }
@@ -625,8 +719,12 @@ mod tests {
             if !self.succeeds {
                 return Err(());
             }
-            if arguments.contains(&"tree") {
+            if arguments.contains(&OBJECT_MANAGER_INTERFACE) {
                 Ok(self.tree.clone())
+            } else if arguments.contains(&"GetCalls") {
+                Ok(self.calls.clone())
+            } else if arguments.contains(&AUDIO_GATEWAY_TRANSPORT_INTERFACE) {
+                Ok(self.transport_state.clone())
             } else if arguments.contains(&"get-property") {
                 Ok(self.state.clone())
             } else {
@@ -635,10 +733,40 @@ mod tests {
         }
     }
 
-    fn dbus_backend(tree: &str) -> WirePlumberBackend<MockDbusRunner> {
+    fn managed_objects(paths: &[&str]) -> String {
+        let objects = paths
+            .iter()
+            .map(|path| format!(r#""{path}":{{}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(r#"{{"type":"a{{oa{{sa{{sv}}}}}}","data":[{{{objects}}}]}}"#)
+    }
+
+    fn managed_calls(paths: &[&str]) -> String {
+        let objects = paths
+            .iter()
+            .map(|path| format!(r#""{path}":{{}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(r#"{{"type":"a{{oa{{sv}}}}","data":[{{{objects}}}]}}"#)
+    }
+
+    fn dbus_backend(paths: &[&str]) -> WirePlumberBackend<MockDbusRunner> {
+        let gateways = paths
+            .iter()
+            .copied()
+            .filter(|path| !path.contains("/call"))
+            .collect::<Vec<_>>();
+        let calls = paths
+            .iter()
+            .copied()
+            .filter(|path| path.contains("/call"))
+            .collect::<Vec<_>>();
         WirePlumberBackend::new(MockDbusRunner {
-            tree: tree.to_owned(),
+            tree: managed_objects(&gateways),
+            calls: managed_calls(&calls),
             state: "s \"incoming\"".to_owned(),
+            transport_state: "s \"active\"".to_owned(),
             commands: Mutex::new(Vec::new()),
             succeeds: true,
         })
@@ -646,13 +774,25 @@ mod tests {
 
     #[test]
     fn wireplumber_backend_discovers_numeric_private_paths() {
-        let backend = dbus_backend(
-            "└─ /org/pipewire/Telephony\n  └─ /org/pipewire/Telephony/ag7\n    └─ /org/pipewire/Telephony/ag7/call3\n",
-        );
+        let backend = dbus_backend(&[
+            "/org/pipewire/Telephony/ag7",
+            "/org/pipewire/Telephony/ag7/call3",
+        ]);
         backend.execute(&CallCommand::Answer).unwrap();
         let commands = backend.runner.commands.lock().unwrap();
         assert_eq!(
             commands[2],
+            [
+                "--user",
+                "get-property",
+                TELEPHONY_SERVICE,
+                "/org/pipewire/Telephony/ag7/call3",
+                OFONO_VOICE_CALL_INTERFACE,
+                "State",
+            ]
+        );
+        assert_eq!(
+            commands[3],
             [
                 "--user",
                 "call",
@@ -666,13 +806,13 @@ mod tests {
 
     #[test]
     fn wireplumber_backend_uses_gateway_methods_and_redacted_errors() {
-        let backend = dbus_backend("└─ /org/pipewire/Telephony/ag2\n");
-        let target_text = "+12025550101";
+        let backend = dbus_backend(&["/org/pipewire/Telephony/ag2"]);
+        let target_text = "123*#";
         backend
             .execute(&CallCommand::Dial(DialTarget::parse(target_text).unwrap()))
             .unwrap();
         let commands = backend.runner.commands.lock().unwrap();
-        assert_eq!(commands[1].last().unwrap(), target_text);
+        assert_eq!(commands[2].last().unwrap(), target_text);
         assert!(!format!("{:?}", WirePlumberBackendError::Rejected).contains(target_text));
         assert!(
             !WirePlumberBackendError::Rejected
@@ -680,29 +820,30 @@ mod tests {
                 .contains(target_text)
         );
 
-        let hangup = dbus_backend(
-            "└─ /org/pipewire/Telephony/ag2\n  └─ /org/pipewire/Telephony/ag2/call1\n",
-        );
+        let hangup = dbus_backend(&[
+            "/org/pipewire/Telephony/ag2",
+            "/org/pipewire/Telephony/ag2/call1",
+        ]);
         hangup.execute(&CallCommand::HangUp).unwrap();
         let commands = hangup.runner.commands.lock().unwrap();
-        assert_eq!(commands[1].last().unwrap(), "HangupAll");
+        assert_eq!(commands[2].last().unwrap(), "HangupAll");
     }
 
     #[test]
     fn wireplumber_backend_refuses_ambiguous_or_unsupported_control() {
-        let disconnected = dbus_backend("");
+        let disconnected = dbus_backend(&[]);
         assert_eq!(
             disconnected.execute(&CallCommand::HangUp),
             Err(WirePlumberBackendError::Unavailable)
         );
         let ambiguous =
-            dbus_backend("├─ /org/pipewire/Telephony/ag0\n└─ /org/pipewire/Telephony/ag1\n");
+            dbus_backend(&["/org/pipewire/Telephony/ag0", "/org/pipewire/Telephony/ag1"]);
         assert_eq!(
             ambiguous.execute(&CallCommand::HangUp),
             Err(WirePlumberBackendError::Ambiguous)
         );
 
-        let backend = dbus_backend("└─ /org/pipewire/Telephony/ag0\n");
+        let backend = dbus_backend(&["/org/pipewire/Telephony/ag0"]);
         assert_eq!(
             backend.execute(&CallCommand::SetSpeakerGain(Gain::new(8).unwrap())),
             Err(WirePlumberBackendError::Unsupported)
@@ -711,9 +852,10 @@ mod tests {
 
     #[test]
     fn wireplumber_backend_gates_commands_on_live_state() {
-        let mut backend = dbus_backend(
-            "└─ /org/pipewire/Telephony/ag0\n  └─ /org/pipewire/Telephony/ag0/call0\n",
-        );
+        let mut backend = dbus_backend(&[
+            "/org/pipewire/Telephony/ag0",
+            "/org/pipewire/Telephony/ag0/call0",
+        ]);
         backend.runner.state = "s \"active\"".to_owned();
         assert_eq!(
             backend.execute(&CallCommand::Answer),
@@ -726,12 +868,14 @@ mod tests {
 
     #[test]
     fn wireplumber_snapshot_reduces_private_paths_to_aggregate_state() {
-        let private_marker = "PRIVATE-CALL-PATH-MARKER";
+        let private_marker = "PRIVATE-PROPERTY-MARKER";
         let backend = WirePlumberBackend::new(MockDbusRunner {
-            tree: format!(
-                "└─ /org/pipewire/Telephony/ag8\n  └─ /org/pipewire/Telephony/ag8/call4 {private_marker}\n"
+            tree: managed_objects(&["/org/pipewire/Telephony/ag8"]),
+            calls: format!(
+                r#"{{"type":"a{{oa{{sv}}}}","data":[{{"/org/pipewire/Telephony/ag8/call4":{{"private":{{"type":"s","data":"{private_marker}"}}}}}}]}}"#
             ),
             state: "s \"active\"".to_owned(),
+            transport_state: "s \"active\"".to_owned(),
             commands: Mutex::new(Vec::new()),
             succeeds: true,
         });
@@ -740,7 +884,7 @@ mod tests {
         assert_eq!(snapshot.call, CallState::Active);
         assert!(!format!("{snapshot:?}").contains(private_marker));
 
-        let idle = dbus_backend("└─ /org/pipewire/Telephony/ag8\n");
+        let idle = dbus_backend(&["/org/pipewire/Telephony/ag8"]);
         assert_eq!(idle.snapshot().unwrap().call, CallState::Idle);
     }
 

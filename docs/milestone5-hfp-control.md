@@ -29,6 +29,9 @@ ownership of the verified SLC.
 - No mutation endpoint is exposed before Android-client authentication exists.
 - D-Bus object discovery accepts only numeric `/agN` and `/callN` paths, rejects
   zero or multiple gateways, and never reads call identity properties.
+- WirePlumber 0.5 exposes gateways through the root ObjectManager but calls only
+  through the gateway's oFono-compatible `GetCalls`; discovery ignores every
+  returned property value and retains only exact numeric object-map keys.
 - The backend reads only each call object's non-private `State` property: answer
   requires `incoming`, DTMF requires `active`, dial requires no live calls, and
   hangup/reject require at least one live call object.
@@ -48,6 +51,12 @@ ownership of the verified SLC.
 - `VERIFIED_AUTOMATED`: numeric object discovery, ambiguity rejection, D-Bus
   command mapping, live-state gating, authenticated API behavior, redacted
   failures, and Android API-27 packaging pass automated tests.
+- `VERIFIED_HARDWARE`: the corrected live discovery reports incoming and active
+  iPhone calls; Pi-originated answer, DTMF `5`, and hangup were accepted and had
+  their expected effects without exposing call identity.
+- `VERIFIED_HARDWARE`: an active call produced exactly one SCO source/sink pair.
+- `FAILED`: one answer/hangup run left the SCO transport active after call state
+  returned idle; an HFP-profile disconnect/reconnect restored clean idle state.
 - `VERIFIED_AUTOMATED`: read-only snapshots aggregate live call objects into HFP
   and call status with deterministic multi-call precedence and no object paths or
   identity fields in the result.
@@ -55,4 +64,5 @@ ownership of the verified SLC.
   while malformed or ambiguous live state maps to a fail-closed error.
 - `VERIFIED_AUTOMATED`: WirePlumber helper calls time out after two seconds and a
   timeout or 1 MiB output-bound error contains neither arguments nor captured output.
-- `UNKNOWN`: command acceptance and behavior with the real iPhone.
+- `UNKNOWN`: Pi-originated reject and dial, microphone/speaker gain behavior, and
+  human-confirmed DTMF audibility.

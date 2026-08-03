@@ -133,25 +133,43 @@ impl AppState {
             None
         };
         let mut status = self.status.write().await;
+        let mut hfp_transport = None;
         if let Some(snapshot) = hfp_snapshot {
             match snapshot {
                 Ok(Ok(snapshot)) => {
                     status.hfp_control = snapshot.control;
                     status.call = snapshot.call;
+                    hfp_transport = Some(snapshot.transport);
                 }
                 Ok(Err(WirePlumberBackendError::Unavailable)) => {
                     status.hfp_control = analogconnect_core::HfpControlState::Disconnected;
                     status.call = analogconnect_core::CallState::Idle;
+                    hfp_transport = Some(analogconnect_core::AudioTransportState::Inactive);
                 }
                 Ok(Err(_)) | Err(_) => {
                     status.hfp_control = analogconnect_core::HfpControlState::Error;
                     status.call = analogconnect_core::CallState::Error;
+                    hfp_transport = Some(analogconnect_core::AudioTransportState::Error);
                 }
             }
         }
         if let Some(snapshot) = audio_snapshot {
             match snapshot {
-                Ok(Ok(snapshot)) => status.audio = snapshot,
+                Ok(Ok(nodes)) => {
+                    status.audio = match (nodes, hfp_transport) {
+                        (analogconnect_core::AudioTransportState::Inactive, _) => {
+                            analogconnect_core::AudioTransportState::Inactive
+                        }
+                        (_, Some(analogconnect_core::AudioTransportState::Inactive)) => {
+                            analogconnect_core::AudioTransportState::Inactive
+                        }
+                        (
+                            analogconnect_core::AudioTransportState::ScoActive,
+                            Some(analogconnect_core::AudioTransportState::ScoActive) | None,
+                        ) => analogconnect_core::AudioTransportState::ScoActive,
+                        _ => analogconnect_core::AudioTransportState::Error,
+                    };
+                }
                 Ok(Err(_)) | Err(_) => {
                     status.audio = analogconnect_core::AudioTransportState::Error;
                 }
@@ -530,6 +548,7 @@ mod tests {
                 Ok(hfp::HfpStatusSnapshot {
                     control: HfpControlState::SlcReady,
                     call: CallState::Active,
+                    transport: analogconnect_core::AudioTransportState::ScoActive,
                 }),
                 "slc_ready",
                 "active",
@@ -582,6 +601,7 @@ mod tests {
                 snapshot: Ok(hfp::HfpStatusSnapshot {
                     control: HfpControlState::SlcReady,
                     call: CallState::Active,
+                    transport: AudioTransportState::ScoActive,
                 }),
             })),
             Some(Arc::new(MockAudioObserver {
@@ -600,6 +620,42 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn idle_gateway_transport_overrides_retained_sco_nodes() {
+        use analogconnect_core::{AudioTransportState, CallState, HfpControlState};
+
+        let state = AppState::with_backends_and_observer(
+            SystemStatus::default(),
+            AuthTokens::new(AuthToken::new(test_token_text()).unwrap()),
+            Arc::new(MockMessageSender {
+                calls: AtomicUsize::new(0),
+            }),
+            Arc::new(MockCallBackend {
+                calls: AtomicUsize::new(0),
+            }),
+            Some(Arc::new(MockHfpObserver {
+                snapshot: Ok(hfp::HfpStatusSnapshot {
+                    control: HfpControlState::SlcReady,
+                    call: CallState::Idle,
+                    transport: AudioTransportState::Inactive,
+                }),
+            })),
+            Some(Arc::new(MockAudioObserver {
+                snapshot: Ok(AudioTransportState::ScoActive),
+            })),
+        );
+        let response = app(state)
+            .oneshot(authorized_request("/api/v1/status"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["hfp_control"], "slc_ready");
+        assert_eq!(json["call"], "idle");
+        assert_eq!(json["audio"], "inactive");
     }
 
     #[tokio::test]

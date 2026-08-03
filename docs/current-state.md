@@ -224,6 +224,11 @@ bearer token and can perform privacy-safe health and authenticated status checks
   read-only WirePlumber/PipeWire snapshots, so production issuance no longer
   depends on static startup state. Expected Telephony absence maps to
   `disconnected`/`idle`; malformed or ambiguous state fails closed.
+- `VERIFIED_AUTOMATED`: live HFP discovery follows WirePlumber 0.5's actual API:
+  root ObjectManager gateway keys, gateway `GetCalls` call keys, oFono-compatible
+  `State`, and PipeWire command methods. Private property values are discarded.
+- `VERIFIED_AUTOMATED`: audio is active only when both a unique SCO node pair and
+  the gateway transport report active.
 - `VERIFIED_AUTOMATED`: `busctl` and `pw-dump` snapshot helpers have a two-second
   wall-time bound and respective 1 MiB/16 MiB output bounds, drain stdout privately,
   discard stderr, and kill/reap stalled children with fixed payload-free errors.
@@ -275,12 +280,17 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: the iPhone selected mSBC and an eSCO connection was established.
 - `VERIFIED_AUTOMATED`: SCO packets flowed in both directions.
 - `VERIFIED_AUTOMATED`: SCO released cleanly while RFCOMM remained alive.
+- `VERIFIED_HARDWARE`: the daemon detected real incoming and active iPhone calls;
+  Pi-originated answer, DTMF `5`, and hangup succeeded, and active SCO validation
+  found exactly one source/sink pair.
+- `FAILED`: a later answer/hangup run returned the call to idle but left SCO active
+  until the HFP profile was cycled; automatic stuck-SCO recovery is still needed.
 
 ## Unverified capabilities
 
 - `UNKNOWN`: human-confirmed intelligible call audio in either direction.
-- `UNKNOWN`: Pi-originated answer, reject, hangup, dial, DTMF, mute, and gain control.
-- `UNKNOWN`: real-iPhone acceptance and effects of Pi-originated call-control AT commands.
+- `UNKNOWN`: Pi-originated reject and dial, mute/gain behavior, and
+  human-confirmed DTMF audibility.
 - `UNKNOWN`: MAP Message Notification Service behavior and reliable incremental sync.
 - `UNKNOWN`: whether iPhone MAP notifications remain reliable across idle periods,
   reconnects, and locked-device states; polling remains the safe default.
@@ -321,8 +331,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 
 ## Next milestone
 
-Milestone 5: hardware-verify Pi-originated HFP call control, beginning with the
-lowest-risk active-call hangup path. Do not deploy the daemon as a system service yet.
+Milestone 5 call control is partly hardware-verified. Next, implement bounded
+stuck-SCO recovery and validate reject/dial plus human-perceived call audio. Do not
+deploy the daemon as a system service yet.
 
 ## End-to-end roadmap
 
