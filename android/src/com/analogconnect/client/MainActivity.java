@@ -70,6 +70,7 @@ public final class MainActivity extends Activity {
         layout.addView(endpoint);
 
         Button discover = new Button(this);
+        discover.setId(R.id.discover_daemon);
         discover.setText("Discover daemon");
         discover.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) { discoverDaemon(); }
@@ -77,6 +78,7 @@ public final class MainActivity extends Activity {
         layout.addView(discover);
 
         tlsName = new EditText(this);
+        tlsName.setId(R.id.tls_name);
         tlsName.setHint("TLS server name");
         tlsName.setSingleLine(true);
         tlsName.setText(getPreferences(MODE_PRIVATE).getString(TLS_NAME_KEY, ""));
@@ -123,6 +125,7 @@ public final class MainActivity extends Activity {
         layout.addView(save);
 
         Button clearEnrollment = new Button(this);
+        clearEnrollment.setId(R.id.clear_enrollment);
         clearEnrollment.setText("Clear enrollment token");
         clearEnrollment.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) { confirmClearEnrollment(); }
