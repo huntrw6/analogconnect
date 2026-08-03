@@ -7,6 +7,8 @@ the token nor API response bodies are logged. Token entry is hidden by default
 and has an explicit visibility switch for easier entry on physical keyboards.
 Non-loopback endpoints require HTTPS and an explicitly enrolled SHA-256 leaf
 certificate pin. The pin is not a credential, but diagnostics still redact it.
+Saving endpoint or certificate changes with an empty token field preserves the
+existing encrypted token. Clearing it requires the separate confirmed action.
 
 The APK declares microphone/audio-routing permissions for the call-audio milestone,
 but the current UI never requests microphone permission or starts capture. The

@@ -122,6 +122,13 @@ public final class MainActivity extends Activity {
         });
         layout.addView(save);
 
+        Button clearEnrollment = new Button(this);
+        clearEnrollment.setText("Clear enrollment token");
+        clearEnrollment.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) { confirmClearEnrollment(); }
+        });
+        layout.addView(clearEnrollment);
+
         Button check = new Button(this);
         check.setId(R.id.check_daemon);
         check.setText("Check daemon");
@@ -253,7 +260,10 @@ public final class MainActivity extends Activity {
             } else if (!pinValue.isEmpty()) {
                 CertificatePin.parse(pinValue);
             }
-            vault.store(token.getText().toString());
+            String tokenValue = token.getText().toString().trim();
+            if (!tokenValue.isEmpty()) {
+                vault.store(tokenValue);
+            }
             getPreferences(MODE_PRIVATE).edit()
                     .putString(ENDPOINT_KEY, endpointValue)
                     .putString(CERTIFICATE_PIN_KEY, pinValue)
@@ -295,6 +305,21 @@ public final class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    private void confirmClearEnrollment() {
+        new AlertDialog.Builder(this)
+                .setTitle("Clear enrollment token?")
+                .setMessage("The client will keep its endpoint and certificate pin but will no longer authenticate.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Clear", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dialog, int which) {
+                        vault.clear();
+                        token.setText("");
+                        result.setText("Enrollment token cleared");
+                    }
+                })
+                .show();
     }
 
     private void confirmSend() {
