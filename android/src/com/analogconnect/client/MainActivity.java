@@ -23,22 +23,26 @@ public final class MainActivity extends Activity {
     private static final String DEFAULT_ENDPOINT = "http://127.0.0.1:8787";
     private static final String ENDPOINT_KEY = "endpoint";
     private static final String CERTIFICATE_PIN_KEY = "certificate_pin";
+    private static final String TLS_NAME_KEY = "tls_name";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private EditText endpoint;
     private EditText token;
     private EditText certificatePin;
+    private EditText tlsName;
     private EditText recipient;
     private EditText messageBody;
     private EditText dialTarget;
     private EditText dtmfTone;
     private TextView result;
     private TokenVault vault;
+    private NsdDiscovery discovery;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         vault = new TokenVault(this);
+        discovery = new NsdDiscovery(this);
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -64,6 +68,19 @@ public final class MainActivity extends Activity {
         endpoint.setSingleLine(true);
         endpoint.setText(getPreferences(MODE_PRIVATE).getString(ENDPOINT_KEY, DEFAULT_ENDPOINT));
         layout.addView(endpoint);
+
+        Button discover = new Button(this);
+        discover.setText("Discover daemon");
+        discover.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) { discoverDaemon(); }
+        });
+        layout.addView(discover);
+
+        tlsName = new EditText(this);
+        tlsName.setHint("TLS server name");
+        tlsName.setSingleLine(true);
+        tlsName.setText(getPreferences(MODE_PRIVATE).getString(TLS_NAME_KEY, ""));
+        layout.addView(tlsName);
 
         certificatePin = new EditText(this);
         certificatePin.setId(R.id.certificate_pin);
@@ -240,6 +257,7 @@ public final class MainActivity extends Activity {
             getPreferences(MODE_PRIVATE).edit()
                     .putString(ENDPOINT_KEY, endpointValue)
                     .putString(CERTIFICATE_PIN_KEY, pinValue)
+                    .putString(TLS_NAME_KEY, tlsName.getText().toString().trim())
                     .apply();
             token.setText("");
             result.setText("Enrollment saved securely");
@@ -375,8 +393,24 @@ public final class MainActivity extends Activity {
     }
 
     private ApiClient apiClient() throws Exception {
-        return new ApiClient(getPreferences(MODE_PRIVATE)
-                .getString(CERTIFICATE_PIN_KEY, ""));
+        return new ApiClient(getPreferences(MODE_PRIVATE).getString(CERTIFICATE_PIN_KEY, ""),
+                getPreferences(MODE_PRIVATE).getString(TLS_NAME_KEY, ""));
+    }
+
+    private void discoverDaemon() {
+        result.setText("Discovering…");
+        discovery.discover(new NsdDiscovery.Callback() {
+            @Override public void onResolved(String value, String identity) {
+                runOnUiThread(new Runnable() {
+                    @Override public void run() { endpoint.setText(value); tlsName.setText(identity); result.setText("Daemon discovered; save enrollment"); }
+                });
+            }
+            @Override public void onFailure() {
+                runOnUiThread(new Runnable() {
+                    @Override public void run() { result.setText("Daemon discovery failed"); }
+                });
+            }
+        });
     }
 
     private int dp(int value) {
@@ -385,6 +419,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        discovery.stop();
         executor.shutdownNow();
         super.onDestroy();
     }

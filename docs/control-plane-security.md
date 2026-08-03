@@ -64,6 +64,9 @@ from the mutable IP address.
   per-service resolution callbacks.
 - `VERIFIED_HARDWARE`: direct `operat.local` URL resolution fails on the target
   Android 8.1 phone even while the same phone can reach the Pi by IP.
+- `VERIFIED_AUTOMATED`: the API-27 Android build discovers `_analogconnect._tcp`,
+  resolves the current address immediately before use, and keeps the resolved mDNS
+  hostname as the separate TLS certificate identity.
 - `UNKNOWN`: Android NSD resolution and reconnect after a real DHCP address change.
 
 ## Staged token rotation

@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 
 import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.HostnameVerifier;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -19,13 +20,20 @@ import org.json.JSONObject;
 final class ApiClient {
     private static final int TIMEOUT_MS = 5000;
     private final CertificatePin certificatePin;
+    private final String tlsName;
 
     ApiClient() {
         certificatePin = null;
+        tlsName = "";
     }
 
     ApiClient(String pin) throws GeneralSecurityException {
+        this(pin, "");
+    }
+
+    ApiClient(String pin, String tlsName) throws GeneralSecurityException {
         certificatePin = pin == null || pin.trim().isEmpty() ? null : CertificatePin.parse(pin);
+        this.tlsName = tlsName == null ? "" : tlsName.trim();
     }
 
     int health(String endpoint) throws IOException {
@@ -172,7 +180,16 @@ final class ApiClient {
         }
         if (connection instanceof HttpsURLConnection) {
             try {
-                ((HttpsURLConnection) connection).setSSLSocketFactory(certificatePin.socketFactory());
+                HttpsURLConnection https = (HttpsURLConnection) connection;
+                https.setSSLSocketFactory(certificatePin.socketFactory());
+                if (!tlsName.isEmpty()) {
+                    final HostnameVerifier verifier = HttpsURLConnection.getDefaultHostnameVerifier();
+                    https.setHostnameVerifier(new HostnameVerifier() {
+                        @Override public boolean verify(String ignored, javax.net.ssl.SSLSession session) {
+                            return verifier.verify(tlsName, session);
+                        }
+                    });
+                }
             } catch (GeneralSecurityException error) {
                 throw new IOException("Could not configure certificate pinning");
             }
