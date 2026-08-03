@@ -17,6 +17,8 @@ interpretations are superseded.
   implemented; they are not yet connected to PipeWire or an Android transport.
 - The server-side Android control plane now requires bearer authentication for all
   non-health endpoints and refuses startup without an explicit token.
+- An API-27 Android client foundation now builds as a signed debug APK on the
+  ARM64 Raspberry Pi; installation and launch on the target phone remain pending.
 
 ## Current architecture
 
@@ -30,13 +32,14 @@ iPhone MAP / PBAP / HFP / eSCO
               |
    authenticated REST + WebSocket + audio transport
               |
-       Android 8.1 application (later milestone)
+       Android 8.1 application foundation
 ```
 
 The repository contains the Bash feasibility harness plus a manually runnable Rust
 daemon. The daemon exposes hardware-free health/status/contact-summary APIs and a
 privacy-safe PBAP adapter, transactional SQLite contact store, normalization,
-search, and caller matching. The Android application has not yet been implemented.
+search, and caller matching. The initial Android application securely stores its
+bearer token and can perform privacy-safe health and authenticated status checks.
 
 ## Environment
 
@@ -45,6 +48,8 @@ search, and caller matching. The Android application has not yet been implemente
 - `VERIFIED_AUTOMATED`: PipeWire 1.4.2 and WirePlumber 0.5.8.
 - `VERIFIED_AUTOMATED`: Rust/Cargo 1.97.1, ShellCheck 0.10.0, imsg 0.3.1.
 - Target Android version: Android 8.1 / API 27.
+- `VERIFIED_AUTOMATED`: OpenJDK 21, Android API 27 platform files, ARM64 Android
+  build tools, and pinned R8/D8 8.3.41 produce a signature-verified APK.
 
 ## Verified capabilities
 
@@ -126,7 +131,22 @@ search, and caller matching. The Android application has not yet been implemente
 - `VERIFIED_AUTOMATED`: token `Debug` output is redacted and token length is bounded.
 - `VERIFIED_AUTOMATED`: daemon startup fails when `ANALOGCONNECT_API_TOKEN` is absent.
 - `DOCUMENTED`: the OpenAPI contract marks health public and every other endpoint protected.
-- `UNKNOWN`: enrollment, rotation, revocation, TLS, and Android secure storage.
+- `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using
+  Android Keystore AES/GCM and does not log tokens or response bodies.
+- `UNKNOWN`: enrollment issuance, rotation, revocation, TLS, and Keystore behavior
+  on the real Android 8.1 phone.
+
+### Android client
+
+- `VERIFIED_AUTOMATED`: a dependency-free API-27 client compiles, DEXes, packages,
+  aligns, signs, and passes APK signature verification on the Raspberry Pi.
+- `VERIFIED_AUTOMATED`: endpoint validation rejects embedded credentials and
+  unsupported URL schemes.
+- `INFERRED`: platform-only UI and APIs are compatible with Android 8.1.
+- `BLOCKED`: installation and launch validation require an attached, USB-debugging
+  authorized Android phone; the latest ADB device scan returned no devices.
+- `UNKNOWN`: phone-to-Pi control-plane transport. The daemon remains intentionally
+  loopback-bound until a secure network design is implemented.
 
 ### MAP
 
@@ -159,7 +179,8 @@ search, and caller matching. The Android application has not yet been implemente
   reconnects, and locked-device states; polling remains the safe default.
 - `UNKNOWN`: MAP sending, delivery state, MMS, attachments, and locked-iPhone behavior.
 - `UNKNOWN`: automatic recovery after reboot, Bluetooth loss, or network loss.
-- `UNKNOWN`: Android device hardware characteristics and end-to-end Android behavior.
+- `UNKNOWN`: real-device Android launch, Keystore behavior, connectivity, and
+  end-to-end behavior.
 
 ## Superseded findings
 
@@ -202,6 +223,7 @@ iPhone using aggregate-only output. Do not deploy the daemon as a system service
 4. Hardware-verified outgoing MAP messages.
 5. Hardware-verified HFP call-control commands.
 6. Pi SCO audio bridge and transport benchmarks.
-7. Android API-27 control-plane application.
+7. Android API-27 control-plane application (foundation implemented; hardware and
+   transport validation pending).
 8. Android call audio.
 9. Full integration, recovery, security, deployment, and maintenance.

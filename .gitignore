@@ -1,6 +1,7 @@
 # Build directories
 build/
 target/
+android/.build/
 *.o
 *.so
 *.dylib

@@ -14,8 +14,9 @@ privacy-controlled procedures, then proceed to outgoing MAP and HFP call control
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Privacy-safe PBAP and MAP validators passed against the real iPhone. PBAP emitted
-only aggregate contact/phone-field counts; MAP emitted only a bounded row count.
+Built and signature-verified the initial API-27 Android APK on the ARM64 Pi. The
+client uses Android Keystore AES/GCM for bearer-token storage and is ready for
+target-phone installation and launch validation.
 
 ## Evidence
 
@@ -110,15 +111,18 @@ SCO cleanly torn down after hangup
 - Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
 
 ## Pending user actions
-- MAP notification and HFP command validation still require guided iPhone interaction.
+- Connect the Android 8.1 phone over USB, enable USB debugging, and authorize this
+  Raspberry Pi when prompted. MAP notification and HFP command validation still
+  require guided iPhone interaction.
 
 ## Next action
-Run a sanitized MAP notification lifecycle test, then HFP commands, with the real
-iPhone. No message bodies, addresses, handles, or contacts may be retained.
+Install and launch the signed debug APK on the Android 8.1 phone, then run a
+sanitized MAP notification lifecycle test and HFP commands with the iPhone.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 - Rust unit/API tests: 13/13 passing
+- Android API-27 debug APK build and signature verification: passing
 - Cargo fmt: passing
 - Cargo Clippy with warnings denied: passing
 - Manual loopback daemon health/status and graceful-shutdown smoke test: passing
