@@ -17,8 +17,9 @@ ANALOGCONNECT_TLS_KEY_PATH=/home/USER/.config/analogconnect/tls/daemon-key.pem
 
 The environment file is operator-owned and must never enter the repository.
 The unit restarts only failures, uses a bounded five-second delay, never runs as
-root, and applies systemd filesystem/kernel hardening. Clean shutdown remains
-stopped so administrative stops do not create restart loops.
+root, drops every Linux capability, uses a private umask, and applies systemd
+filesystem/kernel hardening. Clean shutdown remains stopped so administrative
+stops do not create restart loops.
 
 Validation commands:
 

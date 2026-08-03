@@ -10,13 +10,21 @@ ExecStart=%h/.local/bin/analogconnectd
 Restart=on-failure
 RestartSec=5s
 NoNewPrivileges=true
+CapabilityBoundingSet=
+UMask=0077
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
+ProtectClock=true
+ProtectHostname=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictRealtime=true
 RestrictSUIDSGID=true
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=default.target
