@@ -49,4 +49,6 @@ ten-minute latency growth on the actual Android phone.
 - `VERIFIED_AUTOMATED`: the media registry permits one current call session and
   one claimed client, revokes replaced/ended grants, and safely releases a dropped
   client for bounded reconnection.
+- `VERIFIED_AUTOMATED`: an API-27 Android counterpart validates the server's opaque
+  ID, credential, and bounded lifetime without persisting or exposing them.
 - `UNKNOWN`: live transport benchmarks and the final RTP/Opus versus WebRTC choice.

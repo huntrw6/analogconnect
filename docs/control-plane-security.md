@@ -63,6 +63,9 @@ authenticated client and must never log or persist it.
 - `VERIFIED_AUTOMATED`: one-session and one-connection enforcement, reconnect after
   release, replacement revocation, teardown revocation, and registry/lease
   redaction pass deterministic tests.
+- `VERIFIED_AUTOMATED`: the API-27 Android credential object accepts the exact
+  server ID/token shape, enforces the same five-minute lifetime ceiling, expires
+  against a caller-supplied monotonic clock, and redacts diagnostics and errors.
 - `UNKNOWN`: TLS delivery, network-connection binding, and revocation during a
   real call.
 
