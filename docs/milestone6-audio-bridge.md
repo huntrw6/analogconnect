@@ -108,6 +108,9 @@ session off the UI thread. Stop invalidates an in-flight start before closing th
 active session. Leaving the foreground always stops audio; destruction also closes
 any attached session before its executor exits. UI results use fixed diagnostics
 and never display media credentials.
+While active, a foreground health check reads only the pump's fixed error code.
+It automatically detaches and closes a failed or remotely ended session within
+500 ms, restores the start/stop controls, and never inspects audio samples.
 
 ## Synthetic benchmark
 

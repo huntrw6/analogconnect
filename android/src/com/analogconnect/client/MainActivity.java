@@ -6,6 +6,8 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.text.method.HideReturnsTransformationMethod;
 import android.text.method.PasswordTransformationMethod;
@@ -31,6 +33,7 @@ public final class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ExecutorService audioExecutor = Executors.newSingleThreadExecutor();
     private final Object audioLock = new Object();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private EditText endpoint;
     private EditText token;
     private EditText certificatePin;
@@ -46,6 +49,35 @@ public final class MainActivity extends Activity {
     private Button stopAudio;
     private AndroidCallAudioSession audioSession;
     private int audioGeneration;
+    private final Runnable audioHealthCheck = new Runnable() {
+        @Override public void run() {
+            AndroidCallAudioSession current;
+            synchronized (audioLock) {
+                current = audioSession;
+            }
+            if (current == null) {
+                return;
+            }
+            String errorCode = current.errorCode();
+            if (errorCode == null) {
+                mainHandler.postDelayed(this, 500);
+                return;
+            }
+            synchronized (audioLock) {
+                if (audioSession != current) {
+                    return;
+                }
+                audioGeneration++;
+                audioSession = null;
+            }
+            startAudio.setEnabled(true);
+            stopAudio.setEnabled(false);
+            result.setText("Call audio stopped: " + errorCode);
+            audioExecutor.execute(new Runnable() {
+                @Override public void run() { current.close(); }
+            });
+        }
+    };
 
     @Override
     protected void onCreate(Bundle state) {
@@ -501,6 +533,10 @@ public final class MainActivity extends Activity {
                             startAudio.setEnabled(!finalActive);
                             stopAudio.setEnabled(finalActive);
                             result.setText(finalMessage);
+                            if (finalActive) {
+                                mainHandler.removeCallbacks(audioHealthCheck);
+                                mainHandler.postDelayed(audioHealthCheck, 500);
+                            }
                         }
                     }
                 });
@@ -509,6 +545,7 @@ public final class MainActivity extends Activity {
     }
 
     private void stopCallAudio(final boolean report) {
+        mainHandler.removeCallbacks(audioHealthCheck);
         final AndroidCallAudioSession stopped;
         synchronized (audioLock) {
             audioGeneration++;
@@ -595,6 +632,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onStop() {
+        mainHandler.removeCallbacks(audioHealthCheck);
         stopCallAudio(false);
         super.onStop();
     }
@@ -606,6 +644,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         discovery.stop();
+        mainHandler.removeCallbacks(audioHealthCheck);
         AndroidCallAudioSession stopped;
         synchronized (audioLock) {
             audioGeneration++;

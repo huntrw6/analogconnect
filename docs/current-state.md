@@ -19,8 +19,8 @@ interpretations are superseded.
   effects on the iPhone still require guided validation.
 - Milestone 6 in-memory audio bridge queues and aggregate instrumentation are
   implemented alongside a framed-PCM diagnostic codec, bounded jitter buffer,
-  PipeWire SCO discovery, managed `pw-cat` binding, and exact PCM frame adapters;
-  they are not yet connected to an Android network transport.
+  PipeWire SCO discovery, managed `pw-cat` binding, exact PCM frame adapters,
+  authenticated WebSocket transport, and Android microphone/earpiece pump.
 - The server-side Android control plane now requires bearer authentication for all
   non-health endpoints and refuses startup without an explicit token.
 - An API-27 Android client foundation builds as a signed debug APK on the ARM64
@@ -183,6 +183,20 @@ bearer token and can perform privacy-safe health and authenticated status checks
   optional acoustic echo/noise processing. Partial startup unwinds player,
   recorder, and routing state; stop/close are idempotent and suppress vendor error
   details.
+- `VERIFIED_AUTOMATED`: short-lived, single-connection media credentials protect a
+  bounded WebSocket endpoint; a real loopback upgrade rejects a duplicate claim
+  and transfers ACAP packets through both shared queues.
+- `VERIFIED_AUTOMATED`: authenticated streams own live `pw-cat` capture/playback
+  workers, drain uplink at 7.5 ms with silence underflow, frame downlink, and tear
+  down processes before joining workers.
+- `VERIFIED_AUTOMATED`: the Android pinned-TLS WebSocket wire layer validates the
+  RFC 6455 handshake, masks client frames, rejects extensions/fragmentation and
+  malformed frames, and feeds a synchronized jitter-buffer audio pump through
+  fake device/network boundaries.
+- `DOCUMENTED`: Android start/stop controls request runtime microphone permission,
+  obtain a fresh media grant, start off the UI thread, monitor fixed pump failure
+  codes, cancel stale starts, and stop audio whenever the activity leaves the
+  foreground.
 - `UNKNOWN`: Android microphone permission and real-device audio initialization,
   routing, frame timing, and intelligibility.
 - `UNKNOWN`: live-call PipeWire process operation, network transport latency, and
@@ -248,8 +262,11 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_HARDWARE`: manual enrollment persistence, authenticated daemon access,
   staged short-token testing, and certificate-pin UI behavior work on the real
   Android 8.1 phone through the development ADB tunnel.
-- `UNKNOWN`: one-time enrollment issuance, automatic expiration, real
-  Android-to-Pi LAN TLS, and hardware-backed Keystore availability on this phone.
+- `VERIFIED_HARDWARE`: Android-to-Pi LAN TLS works through NSD-resolved addresses,
+  stable mDNS certificate identity, exact pinning, and bearer authentication; a
+  deliberately stale address was replaced automatically after relaunch.
+- `UNKNOWN`: one-time media-session issuance/expiration on the real phone and
+  hardware-backed Keystore availability on this phone.
 
 ### Android client
 
@@ -262,9 +279,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_HARDWARE`: enrollment, hidden-token visibility toggle, health check,
   authenticated status, and confirmed outbound-message UI behavior work on the
   real phone.
-- `VERIFIED_HARDWARE`: phone-to-Pi control requests work through an ADB reverse
-  loopback tunnel. Direct LAN transport now has a TLS implementation but still
-  requires certificate provisioning and real-phone validation.
+- `VERIFIED_HARDWARE`: phone-to-Pi control requests work over direct pinned LAN TLS
+  after mDNS discovery and continue authenticating after endpoint replacement.
 
 ### MAP
 
@@ -305,8 +321,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `UNKNOWN`: MAP delivery-state notifications, MMS, attachments, sent-folder
   reflection, and locked-iPhone behavior.
 - `UNKNOWN`: automatic recovery after reboot, Bluetooth loss, or network loss.
-- `UNKNOWN`: real-device UI usability, Keystore behavior, connectivity, and
-  end-to-end behavior.
+- `UNKNOWN`: real-device call-audio UI usability, media-session behavior, audio
+  routing, and end-to-end intelligibility; hardware-backed Keystore status also
+  remains unknown.
 
 ## Superseded findings
 
@@ -337,9 +354,10 @@ bearer token and can perform privacy-safe health and authenticated status checks
 
 ## Next milestone
 
-Milestone 5 call control is partly hardware-verified. Next, implement bounded
-stuck-SCO recovery and validate reject/dial plus human-perceived call audio. Do not
-deploy the daemon as a system service yet.
+Milestone 5 answer, DTMF, and hangup controls are hardware-verified. The daemon is
+installed as a hardened persistent user service. Next, deploy the integrated audio
+build, validate human-perceived call audio, and reproduce the stuck-SCO condition
+before considering automatic recovery.
 
 ## End-to-end roadmap
 
@@ -349,7 +367,7 @@ deploy the daemon as a system service yet.
 4. Hardware-verified outgoing MAP messages.
 5. Hardware-verified HFP call-control commands.
 6. Pi SCO audio bridge and transport benchmarks.
-7. Android API-27 control-plane application (foundation installs and launches;
-   UI, secure enrollment, and transport validation pending).
-8. Android call audio.
+7. Android API-27 control-plane application with secure enrollment, discovery,
+   pinned LAN TLS, messaging, and call controls.
+8. Android call audio (software path complete; hardware validation pending).
 9. Full integration, recovery, security, deployment, and maintenance.
