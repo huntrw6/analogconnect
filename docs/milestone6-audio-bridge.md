@@ -45,6 +45,12 @@ The jitter buffer reorders by sequence, waits for a bounded target depth, drops
 far-future frames on overflow, rejects late/duplicate frames, and reports only
 aggregate received/emitted/lost/reordered-health counters.
 
+Playout is an explicit `tick`, not an unpaced queue poll. Before target depth is
+reached a tick does not advance state. Once started, callers tick exactly once per
+7.5 ms HFP frame; an absent frame advances the playout sequence and counts one
+missing-frame underflow even if the queue is empty. A later arrival for that slot
+is then correctly classified as late. Rust and Android implement the same rule.
+
 `FramedPcmMediaBridge` is the transport-neutral diagnostic seam. It encodes
 PipeWire downlink frames into ACAP packets and accepts uplink packet bytes only
 after strict decode and active-format validation, then feeds the bounded jitter
@@ -105,6 +111,9 @@ owners so capture and playback workers do not share a lock or audio buffer.
   same cross-platform golden header vector and both reject malformed input.
 - `VERIFIED_AUTOMATED`: the Android jitter buffer matches the Pi's startup,
   reorder, missing, duplicate, late, and overflow behavior under synthetic tests.
+- `VERIFIED_AUTOMATED`: pre-start polling does not create loss, while an empty
+  post-start playout tick counts one underflow and makes a later packet for that
+  elapsed slot late on both Rust and Android.
 - `VERIFIED_AUTOMATED`: SCO discovery fixtures return only a numeric source/sink
   serial pair, ignore private properties, and fail closed on missing or ambiguous
   nodes.

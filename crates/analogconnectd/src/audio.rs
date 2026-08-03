@@ -92,7 +92,9 @@ impl JitterBuffer {
         self.summary.depth = self.frames.len();
     }
 
-    pub fn pop(&mut self) -> Option<AudioFrame> {
+    /// Advances one playout interval after the target depth has been reached.
+    /// Call exactly once per negotiated HFP frame duration (currently 7.5 ms).
+    pub fn tick(&mut self) -> Option<AudioFrame> {
         if !self.started {
             if self.frames.len() < self.target_depth {
                 return None;
@@ -107,9 +109,7 @@ impl JitterBuffer {
             self.summary.depth = self.frames.len();
             Some(frame)
         } else {
-            if !self.frames.is_empty() {
-                self.summary.missing = self.summary.missing.saturating_add(1);
-            }
+            self.summary.missing = self.summary.missing.saturating_add(1);
             None
         }
     }
@@ -582,8 +582,9 @@ impl FramedPcmMediaBridge {
         Ok(())
     }
 
-    pub fn pop_uplink(&mut self) -> Option<AudioFrame> {
-        self.uplink.pop()
+    /// Advances one uplink playout interval. Call at the active HFP frame rate.
+    pub fn tick_uplink(&mut self) -> Option<AudioFrame> {
+        self.uplink.tick()
     }
 
     #[must_use]
@@ -754,11 +755,11 @@ mod tests {
         let mut buffer = JitterBuffer::new(4, 3).unwrap();
         buffer.insert(frame(2));
         buffer.insert(frame(1));
-        assert!(buffer.pop().is_none());
+        assert!(buffer.tick().is_none());
         buffer.insert(frame(3));
-        assert_eq!(buffer.pop().unwrap().sequence(), 1);
-        assert_eq!(buffer.pop().unwrap().sequence(), 2);
-        assert_eq!(buffer.pop().unwrap().sequence(), 3);
+        assert_eq!(buffer.tick().unwrap().sequence(), 1);
+        assert_eq!(buffer.tick().unwrap().sequence(), 2);
+        assert_eq!(buffer.tick().unwrap().sequence(), 3);
         assert_eq!(buffer.summary().emitted, 3);
     }
 
@@ -768,10 +769,10 @@ mod tests {
         buffer.insert(frame(10));
         buffer.insert(frame(12));
         buffer.insert(frame(12));
-        assert_eq!(buffer.pop().unwrap().sequence(), 10);
-        assert!(buffer.pop().is_none());
+        assert_eq!(buffer.tick().unwrap().sequence(), 10);
+        assert!(buffer.tick().is_none());
         buffer.insert(frame(9));
-        assert_eq!(buffer.pop().unwrap().sequence(), 12);
+        assert_eq!(buffer.tick().unwrap().sequence(), 12);
         let summary = buffer.summary();
         assert_eq!(summary.missing, 1);
         assert_eq!(summary.duplicate, 1);
@@ -785,8 +786,21 @@ mod tests {
         buffer.insert(frame(7));
         buffer.insert(frame(6));
         assert_eq!(buffer.summary().overflow, 1);
-        assert_eq!(buffer.pop().unwrap().sequence(), 5);
-        assert_eq!(buffer.pop().unwrap().sequence(), 6);
+        assert_eq!(buffer.tick().unwrap().sequence(), 5);
+        assert_eq!(buffer.tick().unwrap().sequence(), 6);
+    }
+
+    #[test]
+    fn jitter_tick_counts_empty_playout_underflow_but_not_prestart_polling() {
+        let mut buffer = JitterBuffer::new(2, 1).unwrap();
+        assert!(buffer.tick().is_none());
+        assert_eq!(buffer.summary().missing, 0);
+        buffer.insert(frame(20));
+        assert_eq!(buffer.tick().unwrap().sequence(), 20);
+        assert!(buffer.tick().is_none());
+        assert_eq!(buffer.summary().missing, 1);
+        buffer.insert(frame(21));
+        assert_eq!(buffer.summary().late, 1);
     }
 
     struct FixtureDumpRunner {
@@ -1007,8 +1021,8 @@ mod tests {
                 .unwrap();
             bridge.receive_uplink(&packet).unwrap();
         }
-        assert_eq!(bridge.pop_uplink().unwrap().sequence(), 1);
-        assert_eq!(bridge.pop_uplink().unwrap().sequence(), 2);
+        assert_eq!(bridge.tick_uplink().unwrap().sequence(), 1);
+        assert_eq!(bridge.tick_uplink().unwrap().sequence(), 2);
         assert_eq!(bridge.uplink_summary().emitted, 2);
         assert_eq!(
             bridge.receive_uplink(b"private malformed packet marker"),

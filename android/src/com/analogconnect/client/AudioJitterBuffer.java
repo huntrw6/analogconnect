@@ -46,7 +46,8 @@ final class AudioJitterBuffer {
         frames.put(sequence, packet);
     }
 
-    AudioPacketCodec.Decoded pop() {
+    // Call exactly once per negotiated 7.5 ms frame after playout begins.
+    AudioPacketCodec.Decoded tick() {
         if (!started) {
             if (frames.size() < targetDepth) {
                 return null;
@@ -61,9 +62,7 @@ final class AudioJitterBuffer {
         nextSequence = sequence == Long.MAX_VALUE ? null : sequence + 1;
         AudioPacketCodec.Decoded packet = frames.remove(sequence);
         if (packet == null) {
-            if (!frames.isEmpty()) {
-                missing++;
-            }
+            missing++;
             return null;
         }
         emitted++;
