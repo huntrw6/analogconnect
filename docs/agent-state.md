@@ -1,22 +1,22 @@
 # AnalogConnect Agent State
 
 ## Current milestone
-Milestone 4 — MAP outbound messaging — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
+Milestone 5 — HFP call control — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
 
 ## Current phase
 Hardware-free backend foundations and authenticated server control plane — COMPLETE
 
 ## Current objective
-Hardware-validate one deliberately confirmed outbound MAP message under a
-privacy-controlled procedure, then proceed to HFP call control.
+Hardware-validate Pi-originated HFP call control under privacy-controlled,
+reversible procedures, beginning with hangup during a test call.
 
 ## Current classification
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Installed and launched the signed API-27 APK on the real Android 8.1 phone. ADB
-reported successful installation and activity launch, and the app process remained
-running. No device identifier or application data was retained.
+Sent one deliberately reviewed SMS from the Android client through the authenticated
+Pi API and iPhone MAP transport. The intended recipient confirmed receipt. No
+recipient, body, handle, timestamp, or other private message data was retained.
 
 ## Evidence
 
@@ -111,18 +111,18 @@ SCO cleanly torn down after hangup
 - Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
 
 ## Pending user actions
-- Confirm the Android UI is visible and exercise synthetic-token secure enrollment.
-  MAP notification and HFP command validation still require guided iPhone interaction.
+- HFP command validation requires guided test-call interaction with the iPhone.
 
 ## Next action
-Validate the Android UI and Keystore enrollment with a synthetic token, design the
-secure phone-to-Pi transport, then continue sanitized iPhone hardware tests.
+Identify the safe live RFCOMM command ownership seam, then validate hangup during a
+test call without recording audio, telephone numbers, or private call metadata.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 - Rust unit/API tests: 13/13 passing
 - Android API-27 debug APK build and signature verification: passing
 - Android 8.1 hardware install, activity launch, and live-process check: passing
+- Android-to-Pi-to-iPhone outbound MAP SMS and recipient receipt: passing
 - Cargo fmt: passing
 - Cargo Clippy with warnings denied: passing
 - Manual loopback daemon health/status and graceful-shutdown smoke test: passing

@@ -33,7 +33,11 @@ treated as a multi-user host.
   aggregate-only success, and mock transport invocation pass Rust tests.
 - `VERIFIED_AUTOMATED`: the API-27 Android compose/confirmation client builds and
   its APK signature verifies.
-- `UNKNOWN`: live iPhone MAP acceptance, carrier delivery, and sent-folder state.
+- `VERIFIED_HARDWARE`: one deliberately reviewed Android request was accepted by
+  the iPhone MAP transport and the intended recipient confirmed SMS receipt. No
+  recipient, body, message handle, or timestamp was retained in project evidence.
+- `UNKNOWN`: sent-folder reflection, failure recovery, locked-iPhone behavior,
+  MMS, and attachments.
 
 No automated test invokes the real `imsg` sender. A real send always requires a
 deliberate human-confirmed hardware procedure.

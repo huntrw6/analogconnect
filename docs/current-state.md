@@ -11,9 +11,9 @@ interpretations are superseded.
   aggregate-only pipeline; persistence/search remain hardware-free validated.
 - Milestone 3 MAP synchronization orchestration is implemented around imsg's
   encrypted store and awaits notification behavior validation with the iPhone.
-- Milestone 4 outbound MAP request validation, authenticated API, redacted
-  transport adapter, and confirmation-based Android UI are software-complete;
-  no real message has been sent by this path.
+- Milestone 4 outbound MAP messaging is complete: validation, authenticated API,
+  redacted transport, Android confirmation UI, iPhone acceptance, and recipient
+  delivery have been verified.
 - Milestone 5 HFP call-control domain and AT encoding are implemented behind a
   mock transport; no live command has been sent to the iPhone.
 - Milestone 6 in-memory audio bridge queues and aggregate instrumentation are
@@ -111,7 +111,11 @@ bearer token and can perform privacy-safe health and authenticated status checks
   dialog and clears the body only after transport acceptance.
 - `DOCUMENTED`: installed `imsg 0.3.1` exposes recipient/body as CLI arguments;
   this can briefly expose them through same-machine process inspection.
-- `UNKNOWN`: real-iPhone send acceptance, delivery, and sent-folder reflection.
+- `VERIFIED_HARDWARE`: one deliberately confirmed Android-originated request was
+  sent through iPhone MAP and received by the intended recipient. No private
+  message fields were retained as evidence.
+- `UNKNOWN`: sent-folder reflection, failure recovery, locked-iPhone behavior,
+  MMS, and attachments.
 
 ### HFP call-control software
 
@@ -192,7 +196,10 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `UNKNOWN`: MAP Message Notification Service behavior and reliable incremental sync.
 - `UNKNOWN`: whether iPhone MAP notifications remain reliable across idle periods,
   reconnects, and locked-device states; polling remains the safe default.
-- `UNKNOWN`: MAP sending, delivery state, MMS, attachments, and locked-iPhone behavior.
+- `VERIFIED_HARDWARE`: Android-to-Pi-to-iPhone MAP SMS sending and recipient
+  delivery work for a deliberate test message.
+- `UNKNOWN`: MAP delivery-state notifications, MMS, attachments, sent-folder
+  reflection, and locked-iPhone behavior.
 - `UNKNOWN`: automatic recovery after reboot, Bluetooth loss, or network loss.
 - `UNKNOWN`: real-device UI usability, Keystore behavior, connectivity, and
   end-to-end behavior.
@@ -226,8 +233,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
 
 ## Next milestone
 
-Milestone 4: hardware-verify one deliberately confirmed outgoing MAP message,
-followed by HFP call control. Do not deploy the daemon as a system service yet.
+Milestone 5: hardware-verify Pi-originated HFP call control, beginning with the
+lowest-risk active-call hangup path. Do not deploy the daemon as a system service yet.
 
 ## End-to-end roadmap
 
