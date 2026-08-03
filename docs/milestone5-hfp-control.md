@@ -29,6 +29,9 @@ ownership of the verified SLC.
 - No mutation endpoint is exposed before Android-client authentication exists.
 - D-Bus object discovery accepts only numeric `/agN` and `/callN` paths, rejects
   zero or multiple gateways, and never reads call identity properties.
+- The backend reads only each call object's non-private `State` property: answer
+  requires `incoming`, DTMF requires `active`, dial requires no live calls, and
+  hangup/reject require at least one live call object.
 - Authentication and a 1024-byte limit are applied before command JSON parsing.
 - Android dialing and hangup require an explicit confirmation dialog.
 - PipeWire's Telephony interface does not expose microphone/speaker gain methods;
@@ -43,6 +46,6 @@ ownership of the verified SLC.
 - `VERIFIED_AUTOMATED`: the installed WirePlumber owns `org.pipewire.Telephony`
   and exposes the documented root manager interface.
 - `VERIFIED_AUTOMATED`: numeric object discovery, ambiguity rejection, D-Bus
-  command mapping, authenticated API behavior, redacted failures, and Android
-  API-27 packaging pass automated tests.
+  command mapping, live-state gating, authenticated API behavior, redacted
+  failures, and Android API-27 packaging pass automated tests.
 - `UNKNOWN`: command acceptance and behavior with the real iPhone.

@@ -120,6 +120,21 @@ where
             .map(|_| ())
             .map_err(|_| WirePlumberBackendError::Rejected)
     }
+
+    fn call_state(&self, path: &str) -> Result<LiveCallState, WirePlumberBackendError> {
+        let output = self
+            .runner
+            .run(&[
+                "--user",
+                "get-property",
+                TELEPHONY_SERVICE,
+                path,
+                CALL_INTERFACE,
+                "State",
+            ])
+            .map_err(|_| WirePlumberBackendError::Unavailable)?;
+        LiveCallState::parse(&output).ok_or(WirePlumberBackendError::Ambiguous)
+    }
 }
 
 impl<R> HfpCommandBackend for WirePlumberBackend<R>
@@ -131,17 +146,35 @@ where
     fn execute(&self, command: &CallCommand) -> Result<(), Self::Error> {
         let paths = self.paths()?;
         match command {
-            CallCommand::Answer => self.call(paths.only_call()?, CALL_INTERFACE, "Answer", &[]),
+            CallCommand::Answer => {
+                let call = paths.only_call()?;
+                if self.call_state(call)? != LiveCallState::Incoming {
+                    return Err(WirePlumberBackendError::Rejected);
+                }
+                self.call(call, CALL_INTERFACE, "Answer", &[])
+            }
             CallCommand::Reject | CallCommand::HangUp => {
+                if paths.calls.is_empty() {
+                    return Err(WirePlumberBackendError::Rejected);
+                }
                 self.call(&paths.gateway, AUDIO_GATEWAY_INTERFACE, "HangupAll", &[])
             }
-            CallCommand::Dial(target) => self.call(
-                &paths.gateway,
-                AUDIO_GATEWAY_INTERFACE,
-                "Dial",
-                &["s", target.as_str()],
-            ),
+            CallCommand::Dial(target) => {
+                if !paths.calls.is_empty() {
+                    return Err(WirePlumberBackendError::Rejected);
+                }
+                self.call(
+                    &paths.gateway,
+                    AUDIO_GATEWAY_INTERFACE,
+                    "Dial",
+                    &["s", target.as_str()],
+                )
+            }
             CallCommand::SendDtmf(tone) => {
+                let call = paths.only_call()?;
+                if self.call_state(call)? != LiveCallState::Active {
+                    return Err(WirePlumberBackendError::Rejected);
+                }
                 let value = tone.value().to_string();
                 self.call(
                     &paths.gateway,
@@ -153,6 +186,30 @@ where
             CallCommand::SetMicrophoneMuted(_)
             | CallCommand::SetSpeakerGain(_)
             | CallCommand::SetMicrophoneGain(_) => Err(WirePlumberBackendError::Unsupported),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LiveCallState {
+    Incoming,
+    Dialing,
+    Alerting,
+    Active,
+    Held,
+    Disconnected,
+}
+
+impl LiveCallState {
+    fn parse(output: &str) -> Option<Self> {
+        match output.trim() {
+            "s \"incoming\"" => Some(Self::Incoming),
+            "s \"dialing\"" => Some(Self::Dialing),
+            "s \"alerting\"" => Some(Self::Alerting),
+            "s \"active\"" => Some(Self::Active),
+            "s \"held\"" => Some(Self::Held),
+            "s \"disconnected\"" => Some(Self::Disconnected),
+            _ => None,
         }
     }
 }
@@ -499,6 +556,7 @@ mod tests {
 
     struct MockDbusRunner {
         tree: String,
+        state: String,
         commands: Mutex<Vec<Vec<String>>>,
         succeeds: bool,
     }
@@ -518,6 +576,8 @@ mod tests {
             }
             if arguments.contains(&"tree") {
                 Ok(self.tree.clone())
+            } else if arguments.contains(&"get-property") {
+                Ok(self.state.clone())
             } else {
                 Ok(String::new())
             }
@@ -527,6 +587,7 @@ mod tests {
     fn dbus_backend(tree: &str) -> WirePlumberBackend<MockDbusRunner> {
         WirePlumberBackend::new(MockDbusRunner {
             tree: tree.to_owned(),
+            state: "s \"incoming\"".to_owned(),
             commands: Mutex::new(Vec::new()),
             succeeds: true,
         })
@@ -540,7 +601,7 @@ mod tests {
         backend.execute(&CallCommand::Answer).unwrap();
         let commands = backend.runner.commands.lock().unwrap();
         assert_eq!(
-            commands[1],
+            commands[2],
             [
                 "--user",
                 "call",
@@ -559,16 +620,21 @@ mod tests {
         backend
             .execute(&CallCommand::Dial(DialTarget::parse(target_text).unwrap()))
             .unwrap();
-        backend.execute(&CallCommand::HangUp).unwrap();
         let commands = backend.runner.commands.lock().unwrap();
         assert_eq!(commands[1].last().unwrap(), target_text);
-        assert_eq!(commands[3].last().unwrap(), "HangupAll");
         assert!(!format!("{:?}", WirePlumberBackendError::Rejected).contains(target_text));
         assert!(
             !WirePlumberBackendError::Rejected
                 .to_string()
                 .contains(target_text)
         );
+
+        let hangup = dbus_backend(
+            "└─ /org/pipewire/Telephony/ag2\n  └─ /org/pipewire/Telephony/ag2/call1\n",
+        );
+        hangup.execute(&CallCommand::HangUp).unwrap();
+        let commands = hangup.runner.commands.lock().unwrap();
+        assert_eq!(commands[1].last().unwrap(), "HangupAll");
     }
 
     #[test]
@@ -585,5 +651,20 @@ mod tests {
             backend.execute(&CallCommand::SetSpeakerGain(Gain::new(8).unwrap())),
             Err(WirePlumberBackendError::Unsupported)
         );
+    }
+
+    #[test]
+    fn wireplumber_backend_gates_commands_on_live_state() {
+        let mut backend = dbus_backend(
+            "└─ /org/pipewire/Telephony/ag0\n  └─ /org/pipewire/Telephony/ag0/call0\n",
+        );
+        backend.runner.state = "s \"active\"".to_owned();
+        assert_eq!(
+            backend.execute(&CallCommand::Answer),
+            Err(WirePlumberBackendError::Rejected)
+        );
+        backend
+            .execute(&CallCommand::SendDtmf(DtmfTone::parse('5').unwrap()))
+            .unwrap();
     }
 }

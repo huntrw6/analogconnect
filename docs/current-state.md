@@ -131,6 +131,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
   with AudioGateway dial/hangup/DTMF and per-call answer/hangup methods.
 - `VERIFIED_AUTOMATED`: the installed WirePlumber owns that service, and the
   adapter privately discovers numeric gateway/call paths without identity fields.
+- `VERIFIED_AUTOMATED`: live state gating reads only the non-private call `State`
+  property and blocks answer, dial, DTMF, or hangup in incompatible states.
 - `VERIFIED_AUTOMATED`: authenticated, bounded call-command API requests and the
   Android API-27 controls build and pass mock-backed tests.
 - `UNKNOWN`: real-iPhone acceptance and effects of commands sent through this seam.
