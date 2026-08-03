@@ -136,6 +136,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
   adapter privately discovers numeric gateway/call paths without identity fields.
 - `VERIFIED_AUTOMATED`: live state gating reads only the non-private call `State`
   property and blocks answer, dial, DTMF, or hangup in incompatible states.
+- `VERIFIED_AUTOMATED`: authenticated status reads reduce the live WirePlumber
+  gateway/call tree to aggregate HFP and call states; multiple calls use fixed
+  precedence without exposing object paths.
 - `VERIFIED_AUTOMATED`: authenticated, bounded call-command API requests and the
   Android API-27 controls build and pass mock-backed tests.
 - `UNKNOWN`: real-iPhone acceptance and effects of commands sent through this seam.
@@ -163,6 +166,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: privacy-safe PipeWire SCO discovery selects only official
   source/sink factory identifiers, retains the targetable numeric object serials,
   and the validator emits only aggregate presence.
+- `VERIFIED_AUTOMATED`: runtime refresh maps exactly one SCO pair to `sco_active`,
+  no nodes to `inactive`, and malformed or ambiguous snapshots to a fail-closed
+  audio error without exposing the PipeWire snapshot.
 - `VERIFIED_AUTOMATED`: managed `pw-cat` capture/playback commands bind the proper
   SCO directions for narrowband and wideband HFP, stream through anonymous pipes,
   and clean up partial starts and both child processes without logging stderr.
@@ -211,6 +217,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
   issues a one-minute registry credential only while call and SCO states are both
   active; the OpenAPI contract fixes its three-field response and mandatory
   `no-store`/`no-cache` headers.
+- `VERIFIED_AUTOMATED`: status and media issuance refresh HFP, call, and SCO from
+  read-only WirePlumber/PipeWire snapshots, so production issuance no longer
+  depends on static startup state; observer failure fails closed.
 - `VERIFIED_AUTOMATED`: Android compiles the matching bounded issuance request and
   validates the response into an in-memory-only monotonic credential object.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using

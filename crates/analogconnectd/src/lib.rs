@@ -11,7 +11,9 @@ use std::{
 };
 
 use analogconnect_core::SystemStatus;
-use audio::AudioBridgeSummary;
+use audio::{
+    AudioBridgeSummary, AudioStateBackend, PipeWireAudioStateBackend, PwDumpRunner, ScoNodeError,
+};
 use auth::{AuthToken, AuthTokens, MutationLimiter};
 use axum::{
     Json, Router,
@@ -21,7 +23,9 @@ use axum::{
     routing::get,
 };
 use contacts::ContactSummary;
-use hfp::{BusctlRunner, HfpCommandBackend, WirePlumberBackend, WirePlumberBackendError};
+use hfp::{
+    BusctlRunner, HfpCommandBackend, HfpStateBackend, WirePlumberBackend, WirePlumberBackendError,
+};
 use media_auth::{MediaSessionRegistry, OsRandomSource};
 use messages::{ImsgMapBackend, MapSendBackend, MessageSyncSummary, OutboundMessage};
 use serde::{Deserialize, Serialize};
@@ -38,6 +42,8 @@ pub struct AppState {
     auth_tokens: Arc<AuthTokens>,
     message_sender: Arc<dyn MapSendBackend>,
     call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
+    hfp_state_backend: Option<Arc<dyn HfpStateBackend<Error = WirePlumberBackendError>>>,
+    audio_state_backend: Option<Arc<dyn AudioStateBackend<Error = ScoNodeError>>>,
     mutation_limiter: Arc<MutationLimiter>,
     media_sessions: Arc<MediaSessionRegistry>,
     started_at: Instant,
@@ -49,11 +55,15 @@ impl AppState {
     }
 
     pub fn new_with_tokens(status: SystemStatus, auth_tokens: AuthTokens) -> Self {
-        Self::with_backends(
+        Self::with_backends_and_observer(
             status,
             auth_tokens,
             Arc::new(ImsgMapBackend::default()),
             Arc::new(WirePlumberBackend::new(BusctlRunner::default())),
+            Some(Arc::new(WirePlumberBackend::new(BusctlRunner::default()))),
+            Some(Arc::new(PipeWireAudioStateBackend::new(
+                PwDumpRunner::default(),
+            ))),
         )
     }
 
@@ -76,6 +86,24 @@ impl AppState {
         message_sender: Arc<dyn MapSendBackend>,
         call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
     ) -> Self {
+        Self::with_backends_and_observer(
+            status,
+            auth_tokens,
+            message_sender,
+            call_backend,
+            None,
+            None,
+        )
+    }
+
+    pub fn with_backends_and_observer(
+        status: SystemStatus,
+        auth_tokens: AuthTokens,
+        message_sender: Arc<dyn MapSendBackend>,
+        call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
+        hfp_state_backend: Option<Arc<dyn HfpStateBackend<Error = WirePlumberBackendError>>>,
+        audio_state_backend: Option<Arc<dyn AudioStateBackend<Error = ScoNodeError>>>,
+    ) -> Self {
         Self {
             status: Arc::new(RwLock::new(status)),
             contact_summary: Arc::new(RwLock::new(ContactSummary::default())),
@@ -84,9 +112,45 @@ impl AppState {
             auth_tokens: Arc::new(auth_tokens),
             message_sender,
             call_backend,
+            hfp_state_backend,
+            audio_state_backend,
             mutation_limiter: Arc::new(MutationLimiter::new(10, Duration::from_secs(60))),
             media_sessions: Arc::new(MediaSessionRegistry::new()),
             started_at: Instant::now(),
+        }
+    }
+
+    async fn refresh_runtime_status(&self) {
+        let hfp_snapshot = if let Some(backend) = self.hfp_state_backend.clone() {
+            Some(tokio::task::spawn_blocking(move || backend.snapshot()).await)
+        } else {
+            None
+        };
+        let audio_snapshot = if let Some(backend) = self.audio_state_backend.clone() {
+            Some(tokio::task::spawn_blocking(move || backend.snapshot()).await)
+        } else {
+            None
+        };
+        let mut status = self.status.write().await;
+        if let Some(snapshot) = hfp_snapshot {
+            match snapshot {
+                Ok(Ok(snapshot)) => {
+                    status.hfp_control = snapshot.control;
+                    status.call = snapshot.call;
+                }
+                Ok(Err(_)) | Err(_) => {
+                    status.hfp_control = analogconnect_core::HfpControlState::Error;
+                    status.call = analogconnect_core::CallState::Error;
+                }
+            }
+        }
+        if let Some(snapshot) = audio_snapshot {
+            match snapshot {
+                Ok(Ok(snapshot)) => status.audio = snapshot,
+                Ok(Err(_)) | Err(_) => {
+                    status.audio = analogconnect_core::AudioTransportState::Error;
+                }
+            }
         }
     }
 }
@@ -132,6 +196,7 @@ async fn status(
     headers: HeaderMap,
 ) -> Result<Json<SystemStatus>, StatusCode> {
     authorize(&state, &headers)?;
+    state.refresh_runtime_status().await;
     Ok(Json(state.status.read().await.clone()))
 }
 
@@ -269,6 +334,7 @@ async fn create_audio_session(
 
     authorize(&state, &headers)?;
     authorize_mutation(&state)?;
+    state.refresh_runtime_status().await;
     let status = state.status.read().await;
     if status.call != CallState::Active || status.audio != AudioTransportState::ScoActive {
         return Err(StatusCode::CONFLICT);
@@ -335,6 +401,30 @@ mod tests {
 
     struct MockCallBackend {
         calls: AtomicUsize,
+    }
+
+    struct MockHfpObserver {
+        snapshot: Result<hfp::HfpStatusSnapshot, WirePlumberBackendError>,
+    }
+
+    struct MockAudioObserver {
+        snapshot: Result<analogconnect_core::AudioTransportState, ScoNodeError>,
+    }
+
+    impl HfpStateBackend for MockHfpObserver {
+        type Error = WirePlumberBackendError;
+
+        fn snapshot(&self) -> Result<hfp::HfpStatusSnapshot, Self::Error> {
+            self.snapshot
+        }
+    }
+
+    impl AudioStateBackend for MockAudioObserver {
+        type Error = ScoNodeError;
+
+        fn snapshot(&self) -> Result<analogconnect_core::AudioTransportState, Self::Error> {
+            self.snapshot
+        }
     }
 
     impl HfpCommandBackend for MockCallBackend {
@@ -424,6 +514,82 @@ mod tests {
         assert_eq!(json["hfp_control"], "disconnected");
         assert_eq!(json["call"], "idle");
         assert_eq!(json["audio"], "inactive");
+    }
+
+    #[tokio::test]
+    async fn status_endpoint_refreshes_live_hfp_state_and_fails_closed() {
+        use analogconnect_core::{CallState, HfpControlState};
+
+        for (snapshot, expected_control, expected_call) in [
+            (
+                Ok(hfp::HfpStatusSnapshot {
+                    control: HfpControlState::SlcReady,
+                    call: CallState::Active,
+                }),
+                "slc_ready",
+                "active",
+            ),
+            (Err(WirePlumberBackendError::Unavailable), "error", "error"),
+        ] {
+            let state = AppState::with_backends_and_observer(
+                SystemStatus::default(),
+                AuthTokens::new(AuthToken::new(test_token_text()).unwrap()),
+                Arc::new(MockMessageSender {
+                    calls: AtomicUsize::new(0),
+                }),
+                Arc::new(MockCallBackend {
+                    calls: AtomicUsize::new(0),
+                }),
+                Some(Arc::new(MockHfpObserver { snapshot })),
+                None,
+            );
+            let response = app(state)
+                .oneshot(authorized_request("/api/v1/status"))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
+            let json: Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["hfp_control"], expected_control);
+            assert_eq!(json["call"], expected_call);
+        }
+    }
+
+    #[tokio::test]
+    async fn live_runtime_snapshots_enable_media_issuance_without_static_state() {
+        use analogconnect_core::{AudioTransportState, CallState, HfpControlState};
+
+        let state = AppState::with_backends_and_observer(
+            SystemStatus::default(),
+            AuthTokens::new(AuthToken::new(test_token_text()).unwrap()),
+            Arc::new(MockMessageSender {
+                calls: AtomicUsize::new(0),
+            }),
+            Arc::new(MockCallBackend {
+                calls: AtomicUsize::new(0),
+            }),
+            Some(Arc::new(MockHfpObserver {
+                snapshot: Ok(hfp::HfpStatusSnapshot {
+                    control: HfpControlState::SlcReady,
+                    call: CallState::Active,
+                }),
+            })),
+            Some(Arc::new(MockAudioObserver {
+                snapshot: Ok(AudioTransportState::ScoActive),
+            })),
+        );
+        let response = app(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/audio/sessions")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
     }
 
     #[tokio::test]

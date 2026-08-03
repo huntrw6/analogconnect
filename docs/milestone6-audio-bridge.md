@@ -80,6 +80,9 @@ The locator selects only PipeWire nodes whose official `factory.name` is
 and description properties. It retains `object.serial`, because `pw-cat --target`
 accepts a node serial or name rather than the transient global object ID. Output
 contains only whether exactly one pair exists; serials are not printed.
+The runtime observer distinguishes a cleanly absent pair (`inactive`) from a valid
+pair (`sco_active`); malformed, partial, or duplicate state fails closed as an
+audio error.
 
 ## Live PipeWire process boundary
 

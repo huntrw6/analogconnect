@@ -48,4 +48,7 @@ ownership of the verified SLC.
 - `VERIFIED_AUTOMATED`: numeric object discovery, ambiguity rejection, D-Bus
   command mapping, live-state gating, authenticated API behavior, redacted
   failures, and Android API-27 packaging pass automated tests.
+- `VERIFIED_AUTOMATED`: read-only snapshots aggregate live call objects into HFP
+  and call status with deterministic multi-call precedence and no object paths or
+  identity fields in the result.
 - `UNKNOWN`: command acceptance and behavior with the real iPhone.

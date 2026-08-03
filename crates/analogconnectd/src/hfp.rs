@@ -4,13 +4,25 @@ use std::{
     sync::Mutex,
 };
 
-use analogconnect_core::{CallCommand, CallState, Gain};
+use analogconnect_core::{CallCommand, CallState, Gain, HfpControlState};
 use thiserror::Error;
 
 pub trait HfpCommandBackend: Send + Sync {
     type Error;
 
     fn execute(&self, command: &CallCommand) -> Result<(), Self::Error>;
+}
+
+pub trait HfpStateBackend: Send + Sync {
+    type Error;
+
+    fn snapshot(&self) -> Result<HfpStatusSnapshot, Self::Error>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HfpStatusSnapshot {
+    pub control: HfpControlState,
+    pub call: CallState,
 }
 
 pub trait AtTransport: Send + Sync {
@@ -187,6 +199,44 @@ where
             | CallCommand::SetSpeakerGain(_)
             | CallCommand::SetMicrophoneGain(_) => Err(WirePlumberBackendError::Unsupported),
         }
+    }
+}
+
+impl<R> HfpStateBackend for WirePlumberBackend<R>
+where
+    R: DbusCommandRunner,
+{
+    type Error = WirePlumberBackendError;
+
+    fn snapshot(&self) -> Result<HfpStatusSnapshot, Self::Error> {
+        let paths = self.paths()?;
+        let mut states = Vec::with_capacity(paths.calls.len());
+        for call in &paths.calls {
+            states.push(self.call_state(call)?);
+        }
+        Ok(HfpStatusSnapshot {
+            control: HfpControlState::SlcReady,
+            call: aggregate_call_state(&states),
+        })
+    }
+}
+
+fn aggregate_call_state(states: &[LiveCallState]) -> CallState {
+    if states.contains(&LiveCallState::Active) {
+        CallState::Active
+    } else if states.contains(&LiveCallState::Incoming) {
+        CallState::Incoming
+    } else if states
+        .iter()
+        .any(|state| matches!(state, LiveCallState::Dialing | LiveCallState::Alerting))
+    {
+        CallState::Outgoing
+    } else if states.contains(&LiveCallState::Held) {
+        CallState::Held
+    } else if states.contains(&LiveCallState::Disconnected) {
+        CallState::Ended
+    } else {
+        CallState::Idle
     }
 }
 
@@ -666,5 +716,46 @@ mod tests {
         backend
             .execute(&CallCommand::SendDtmf(DtmfTone::parse('5').unwrap()))
             .unwrap();
+    }
+
+    #[test]
+    fn wireplumber_snapshot_reduces_private_paths_to_aggregate_state() {
+        let private_marker = "PRIVATE-CALL-PATH-MARKER";
+        let backend = WirePlumberBackend::new(MockDbusRunner {
+            tree: format!(
+                "└─ /org/pipewire/Telephony/ag8\n  └─ /org/pipewire/Telephony/ag8/call4 {private_marker}\n"
+            ),
+            state: "s \"active\"".to_owned(),
+            commands: Mutex::new(Vec::new()),
+            succeeds: true,
+        });
+        let snapshot = backend.snapshot().unwrap();
+        assert_eq!(snapshot.control, HfpControlState::SlcReady);
+        assert_eq!(snapshot.call, CallState::Active);
+        assert!(!format!("{snapshot:?}").contains(private_marker));
+
+        let idle = dbus_backend("└─ /org/pipewire/Telephony/ag8\n");
+        assert_eq!(idle.snapshot().unwrap().call, CallState::Idle);
+    }
+
+    #[test]
+    fn aggregate_call_state_has_privacy_safe_multi_call_precedence() {
+        assert_eq!(aggregate_call_state(&[]), CallState::Idle);
+        assert_eq!(
+            aggregate_call_state(&[LiveCallState::Held, LiveCallState::Incoming]),
+            CallState::Incoming
+        );
+        assert_eq!(
+            aggregate_call_state(&[LiveCallState::Incoming, LiveCallState::Active]),
+            CallState::Active
+        );
+        assert_eq!(
+            aggregate_call_state(&[LiveCallState::Alerting]),
+            CallState::Outgoing
+        );
+        assert_eq!(
+            aggregate_call_state(&[LiveCallState::Disconnected]),
+            CallState::Ended
+        );
     }
 }

@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket};
+use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket, AudioTransportState};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -232,6 +232,9 @@ where
         sources.dedup();
         sinks.sort_unstable();
         sinks.dedup();
+        if sources.is_empty() && sinks.is_empty() {
+            return Err(ScoNodeError::Absent);
+        }
         if sources.len() != 1 || sinks.len() != 1 || sources[0] == sinks[0] {
             return Err(ScoNodeError::Ambiguous);
         }
@@ -255,8 +258,50 @@ pub enum ScoNodeError {
     Unavailable,
     #[error("PipeWire snapshot is invalid")]
     InvalidSnapshot,
+    #[error("PipeWire SCO nodes are absent")]
+    Absent,
     #[error("PipeWire SCO node state is absent or ambiguous")]
     Ambiguous,
+}
+
+pub trait AudioStateBackend: Send + Sync {
+    type Error;
+
+    fn snapshot(&self) -> Result<AudioTransportState, Self::Error>;
+}
+
+pub struct PipeWireAudioStateBackend<R> {
+    locator: ScoNodeLocator<R>,
+}
+
+impl<R: PipeWireDumpRunner> PipeWireAudioStateBackend<R> {
+    #[must_use]
+    pub const fn new(runner: R) -> Self {
+        Self {
+            locator: ScoNodeLocator::new(runner),
+        }
+    }
+}
+
+impl Default for PipeWireAudioStateBackend<PwDumpRunner> {
+    fn default() -> Self {
+        Self::new(PwDumpRunner::default())
+    }
+}
+
+impl<R> AudioStateBackend for PipeWireAudioStateBackend<R>
+where
+    R: PipeWireDumpRunner,
+{
+    type Error = ScoNodeError;
+
+    fn snapshot(&self) -> Result<AudioTransportState, Self::Error> {
+        match self.locator.locate() {
+            Ok(_) => Ok(AudioTransportState::ScoActive),
+            Err(ScoNodeError::Absent) => Ok(AudioTransportState::Inactive),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -842,22 +887,25 @@ mod tests {
 
     #[test]
     fn sco_locator_fails_closed_on_missing_duplicate_or_invalid_nodes() {
-        for dump in [
-            "[]",
-            r#"[
+        assert_eq!(
+            ScoNodeLocator::new(FixtureDumpRunner {
+                dump: "[]".to_owned()
+            })
+            .locate(),
+            Err(ScoNodeError::Absent)
+        );
+        let duplicate = r#"[
               {"id":1,"type":"PipeWire:Interface:Node","info":{"props":{"object.serial":"11","factory.name":"api.bluez5.sco.source"}}},
               {"id":2,"type":"PipeWire:Interface:Node","info":{"props":{"object.serial":"12","factory.name":"api.bluez5.sco.source"}}},
               {"id":3,"type":"PipeWire:Interface:Node","info":{"props":{"object.serial":"13","factory.name":"api.bluez5.sco.sink"}}}
-            ]"#,
-        ] {
-            assert_eq!(
-                ScoNodeLocator::new(FixtureDumpRunner {
-                    dump: dump.to_owned()
-                })
-                .locate(),
-                Err(ScoNodeError::Ambiguous)
-            );
-        }
+            ]"#;
+        assert_eq!(
+            ScoNodeLocator::new(FixtureDumpRunner {
+                dump: duplicate.to_owned()
+            })
+            .locate(),
+            Err(ScoNodeError::Ambiguous)
+        );
         assert_eq!(
             ScoNodeLocator::new(FixtureDumpRunner {
                 dump: "private malformed payload".to_owned()
@@ -865,6 +913,26 @@ mod tests {
             .locate(),
             Err(ScoNodeError::InvalidSnapshot)
         );
+    }
+
+    #[test]
+    fn pipewire_audio_snapshot_maps_presence_and_absence_without_identifiers() {
+        let active = PipeWireAudioStateBackend::new(FixtureDumpRunner {
+            dump: r#"[
+              {"type":"PipeWire:Interface:Node","info":{"props":{"object.serial":"71","factory.name":"api.bluez5.sco.source"}}},
+              {"type":"PipeWire:Interface:Node","info":{"props":{"object.serial":"72","factory.name":"api.bluez5.sco.sink"}}}
+            ]"#
+                .to_owned(),
+        });
+        assert_eq!(active.snapshot(), Ok(AudioTransportState::ScoActive));
+        let inactive = PipeWireAudioStateBackend::new(FixtureDumpRunner {
+            dump: "[]".to_owned(),
+        });
+        assert_eq!(inactive.snapshot(), Ok(AudioTransportState::Inactive));
+        let invalid = PipeWireAudioStateBackend::new(FixtureDumpRunner {
+            dump: "private malformed snapshot".to_owned(),
+        });
+        assert_eq!(invalid.snapshot(), Err(ScoNodeError::InvalidSnapshot));
     }
 
     #[test]
