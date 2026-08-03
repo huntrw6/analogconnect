@@ -3,7 +3,8 @@
 This is a dependency-free Android 8.1 (API 27) client foundation. It currently
 provides local enrollment settings and a privacy-safe daemon health/status check.
 The bearer token is encrypted with an Android Keystore AES/GCM key and neither
-the token nor API response bodies are logged.
+the token nor API response bodies are logged. Token entry is hidden by default
+and has an explicit visibility switch for easier entry on physical keyboards.
 
 The Raspberry Pi daemon is still loopback-bound, so phone-to-Pi networking is
 not enabled in the current milestone. Installing and launching this APK checks

@@ -3,10 +3,14 @@ package com.analogconnect.client;
 import android.app.Activity;
 import android.os.Bundle;
 import android.text.InputType;
+import android.text.method.HideReturnsTransformationMethod;
+import android.text.method.PasswordTransformationMethod;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import java.util.concurrent.ExecutorService;
@@ -53,6 +57,20 @@ public final class MainActivity extends Activity {
         token.setSingleLine(true);
         token.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         layout.addView(token);
+
+        Switch showToken = new Switch(this);
+        showToken.setText("Show token");
+        showToken.setChecked(false);
+        showToken.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton button, boolean checked) {
+                token.setTransformationMethod(checked
+                        ? HideReturnsTransformationMethod.getInstance()
+                        : PasswordTransformationMethod.getInstance());
+                token.setSelection(token.length());
+            }
+        });
+        layout.addView(showToken);
 
         Button save = new Button(this);
         save.setText("Save enrollment");
