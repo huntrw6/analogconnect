@@ -12,14 +12,14 @@ FAIL_COUNT=0
 pass() { PASS_COUNT=$((PASS_COUNT + 1)); printf '  PASS  %s\n' "$1"; }
 fail() { FAIL_COUNT=$((FAIL_COUNT + 1)); printf '  FAIL  %s\n' "$1" >&2; }
 
-output_dir="$TEST_ROOT/generated"
+output_dir="$TEST_ROOT/missing/parent/generated"
 output=$("$PROVISION_SCRIPT" --output "$output_dir" \
     --host 192.0.2.10 --host pi.example.test)
 if [[ "$output" == *'TLS_PROVISION=PASS'* ]] &&
     [[ "$output" =~ CERTIFICATE_SHA256=([0-9a-f]{64}) ]]; then
-    pass "generates a copyable SHA-256 leaf pin"
+    pass "creates missing parents and a copyable SHA-256 leaf pin"
 else
-    fail "generates a copyable SHA-256 leaf pin"
+    fail "creates missing parents and a copyable SHA-256 leaf pin"
 fi
 
 if [[ $(stat -c '%a' "$output_dir/daemon-key.pem") == 600 ]] &&

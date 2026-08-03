@@ -90,6 +90,7 @@ done
 san_list=$(IFS=,; printf '%s' "${sans[*]}")
 
 umask 077
+mkdir -p -- "$(dirname -- "$resolved_output")"
 mkdir -- "$resolved_output"
 key_path="$resolved_output/daemon-key.pem"
 cert_path="$resolved_output/daemon-cert.pem"
