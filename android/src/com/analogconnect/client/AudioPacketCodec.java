@@ -14,6 +14,9 @@ final class AudioPacketCodec {
     static byte[] encode(int format, long sequence, long captureTimeMicros, short[] samples)
             throws PacketException {
         int expectedSamples = expectedSamples(format);
+        if (sequence < 0) {
+            throw new PacketException("Audio sequence is outside the supported range");
+        }
         if (samples == null || samples.length != expectedSamples) {
             throw new PacketException("Invalid audio payload");
         }
@@ -54,6 +57,9 @@ final class AudioPacketCodec {
             throw new PacketException("Invalid audio payload");
         }
         long sequence = packet.getLong();
+        if (sequence < 0) {
+            throw new PacketException("Audio sequence is outside the supported range");
+        }
         long captureTimeMicros = packet.getLong();
         packet.order(ByteOrder.LITTLE_ENDIAN);
         short[] samples = new short[expectedSamples];

@@ -8,7 +8,8 @@ public final class AudioPacketCodecTest {
         roundTrips(AudioPacketCodec.FORMAT_WIDEBAND, 120);
         rejectsMalformedPackets();
         matchesGoldenHeader();
-        System.out.println("ANDROID_AUDIO_TESTS=PASS tests=4");
+        rejectsNegativeSequence();
+        System.out.println("ANDROID_AUDIO_TESTS=PASS tests=5");
     }
 
     private static void roundTrips(int format, int count) throws Exception {
@@ -45,6 +46,16 @@ public final class AudioPacketCodecTest {
                 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18
         };
         assertTrue(Arrays.equals(Arrays.copyOf(encoded, 24), expected));
+    }
+
+    private static void rejectsNegativeSequence() throws Exception {
+        try {
+            AudioPacketCodec.encode(
+                    AudioPacketCodec.FORMAT_NARROWBAND, -1, 0, new short[60]);
+            throw new AssertionError("expected sequence rejection");
+        } catch (AudioPacketCodec.PacketException expected) {
+            // Expected.
+        }
     }
 
     private static void assertRejected(byte[] packet) throws Exception {

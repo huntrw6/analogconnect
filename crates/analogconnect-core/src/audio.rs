@@ -113,6 +113,9 @@ impl AudioPacket {
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, AudioPacketError> {
+        if self.frame.sequence > i64::MAX as u64 {
+            return Err(AudioPacketError::SequenceOutOfRange);
+        }
         let mut packet = Vec::with_capacity(PACKET_HEADER_BYTES + self.frame.samples.len() * 2);
         packet.extend_from_slice(PACKET_MAGIC);
         packet.push(PACKET_VERSION);
@@ -151,6 +154,9 @@ impl AudioPacket {
             return Err(AudioPacketError::InvalidPayload);
         }
         let sequence = u64::from_be_bytes(packet[8..16].try_into().unwrap());
+        if sequence > i64::MAX as u64 {
+            return Err(AudioPacketError::SequenceOutOfRange);
+        }
         let capture_time_micros = u64::from_be_bytes(packet[16..24].try_into().unwrap());
         let samples = payload
             .chunks_exact(2)
@@ -180,6 +186,8 @@ pub enum AudioPacketError {
     UnsupportedFormat,
     #[error("audio packet payload length is invalid")]
     InvalidPayload,
+    #[error("audio packet sequence is outside the cross-platform range")]
+    SequenceOutOfRange,
 }
 
 #[cfg(test)]
@@ -257,6 +265,20 @@ mod tests {
                 0x41, 0x43, 0x41, 0x50, 0x01, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
                 0x07, 0x08, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
             ]
+        );
+    }
+
+    #[test]
+    fn packet_codec_rejects_sequences_outside_signed_63_bit_range() {
+        let frame = AudioFrame::new(
+            u64::MAX,
+            AudioFormat::HFP_NARROWBAND,
+            vec![0; usize::from(AudioFormat::HFP_NARROWBAND.samples_per_channel)],
+        )
+        .unwrap();
+        assert_eq!(
+            AudioPacket::new(0, frame).encode(),
+            Err(AudioPacketError::SequenceOutOfRange)
         );
     }
 }
