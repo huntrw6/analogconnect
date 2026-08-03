@@ -79,5 +79,10 @@ numeric IDs are kept transient and are not printed.
   reorder, missing, duplicate, late, and overflow behavior under synthetic tests.
 - `VERIFIED_AUTOMATED`: SCO discovery fixtures return only a numeric source/sink
   pair, ignore private properties, and fail closed on missing or ambiguous nodes.
+- `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16
+  kHz mono 7.5 ms frames, uses voice-communication capture/playback, restores prior
+  routing on stop, and conditionally enables platform echo/noise processing.
+- `UNKNOWN`: real-phone microphone permission, device initialization, earpiece
+  routing, echo/noise processing effectiveness, and sustained frame I/O.
 - `UNKNOWN`: live PipeWire capture/playback, codec conversion, Android transport,
   end-to-end latency, and human-confirmed intelligibility.

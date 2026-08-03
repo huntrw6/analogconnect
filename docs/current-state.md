@@ -157,6 +157,11 @@ bearer token and can perform privacy-safe health and authenticated status checks
   the Pi policy, including the shared signed-63-bit wire range.
 - `VERIFIED_AUTOMATED`: privacy-safe PipeWire SCO discovery selects only official
   source/sink factory identifiers and the validator emits only aggregate presence.
+- `VERIFIED_AUTOMATED`: an inactive-by-default Android audio-device adapter builds
+  with voice-communication routing, exact HFP frame sizes, blocking PCM I/O, and
+  optional acoustic echo/noise processing.
+- `UNKNOWN`: Android microphone permission and real-device audio initialization,
+  routing, frame timing, and intelligibility.
 - `UNKNOWN`: PipeWire node binding, codec conversion, network transport latency,
   and intelligibility with real call audio.
 

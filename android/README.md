@@ -8,6 +8,10 @@ and has an explicit visibility switch for easier entry on physical keyboards.
 Non-loopback endpoints require HTTPS and an explicitly enrolled SHA-256 leaf
 certificate pin. The pin is not a credential, but diagnostics still redact it.
 
+The APK declares microphone/audio-routing permissions for the call-audio milestone,
+but the current UI never requests microphone permission or starts capture. The
+audio device adapter remains inactive until a short-lived media transport exists.
+
 The Raspberry Pi daemon is still loopback-bound, so phone-to-Pi networking is
 not enabled in the current milestone. Installing and launching this APK checks
 only Android toolchain and device compatibility.
