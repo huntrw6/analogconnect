@@ -45,6 +45,13 @@ The jitter buffer reorders by sequence, waits for a bounded target depth, drops
 far-future frames on overflow, rejects late/duplicate frames, and reports only
 aggregate received/emitted/lost/reordered-health counters.
 
+`FramedPcmMediaBridge` is the transport-neutral diagnostic seam. It encodes
+PipeWire downlink frames into ACAP packets and accepts uplink packet bytes only
+after strict decode and active-format validation, then feeds the bounded jitter
+buffer for ordered PipeWire playout. Its diagnostics contain only format and
+aggregate jitter counters. A future RTP or WebRTC adapter can replace packet
+carriage without changing PipeWire framing or playout policy.
+
 ## Synthetic benchmark
 
 ```bash
@@ -107,6 +114,9 @@ owners so capture and playback workers do not share a lock or audio buffer.
 - `VERIFIED_AUTOMATED`: PCM adapters reconstruct partial reads, preserve signed
   little-endian samples, sequence consecutive frames, reject truncated input and
   format changes, and expose no sample values in errors.
+- `VERIFIED_AUTOMATED`: the transport-neutral framed bridge round-trips downlink
+  packets, reorders uplink packets, rejects malformed or mid-session format
+  changes, validates jitter configuration, and exposes no samples in diagnostics.
 - `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16
   kHz mono 7.5 ms frames, uses voice-communication capture/playback, restores prior
   routing on stop, conditionally enables platform echo/noise processing, cleans up

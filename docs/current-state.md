@@ -166,6 +166,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: PipeWire PCM adapters reconstruct short reads into exact
   frames, preserve little-endian samples, reject truncated/mismatched frames, and
   can transfer the two directions to independent workers.
+- `VERIFIED_AUTOMATED`: a transport-neutral framed-media bridge encodes downlink,
+  strictly decodes and format-checks uplink, applies bounded jitter ordering, and
+  reports aggregate state without committing to RTP or WebRTC.
 - `VERIFIED_AUTOMATED`: an inactive-by-default Android audio-device adapter builds
   with voice-communication routing, exact HFP frame sizes, blocking PCM I/O, and
   optional acoustic echo/noise processing. Partial startup unwinds player,

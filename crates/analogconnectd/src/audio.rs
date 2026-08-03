@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-use analogconnect_core::{AudioFormat, AudioFrame};
+use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -541,6 +541,79 @@ pub enum PcmStreamError {
     InvalidFrame,
 }
 
+/// Transport-neutral diagnostic bridge between live PCM frames and ACAP packets.
+/// It owns only bounded in-memory jitter state and never logs or persists samples.
+pub struct FramedPcmMediaBridge {
+    format: AudioFormat,
+    uplink: JitterBuffer,
+}
+
+impl FramedPcmMediaBridge {
+    pub fn new(
+        format: AudioFormat,
+        uplink_capacity: usize,
+        uplink_target_depth: usize,
+    ) -> Result<Self, FramedPcmMediaError> {
+        validate_hfp_format(format).map_err(|_| FramedPcmMediaError::UnsupportedFormat)?;
+        let uplink = JitterBuffer::new(uplink_capacity, uplink_target_depth)
+            .map_err(|_| FramedPcmMediaError::InvalidJitterConfiguration)?;
+        Ok(Self { format, uplink })
+    }
+
+    pub fn encode_downlink(
+        &self,
+        frame: &AudioFrame,
+        capture_time_micros: u64,
+    ) -> Result<Vec<u8>, FramedPcmMediaError> {
+        if frame.format() != self.format {
+            return Err(FramedPcmMediaError::FormatMismatch);
+        }
+        AudioPacket::new(capture_time_micros, frame.clone())
+            .encode()
+            .map_err(|_| FramedPcmMediaError::InvalidPacket)
+    }
+
+    pub fn receive_uplink(&mut self, packet: &[u8]) -> Result<(), FramedPcmMediaError> {
+        let packet = AudioPacket::decode(packet).map_err(|_| FramedPcmMediaError::InvalidPacket)?;
+        if packet.frame().format() != self.format {
+            return Err(FramedPcmMediaError::FormatMismatch);
+        }
+        self.uplink.insert(packet.frame().clone());
+        Ok(())
+    }
+
+    pub fn pop_uplink(&mut self) -> Option<AudioFrame> {
+        self.uplink.pop()
+    }
+
+    #[must_use]
+    pub fn uplink_summary(&self) -> JitterBufferSummary {
+        self.uplink.summary()
+    }
+}
+
+impl std::fmt::Debug for FramedPcmMediaBridge {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("FramedPcmMediaBridge")
+            .field("format", &self.format)
+            .field("uplink", &self.uplink.summary())
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum FramedPcmMediaError {
+    #[error("media format is unsupported")]
+    UnsupportedFormat,
+    #[error("media jitter configuration is invalid")]
+    InvalidJitterConfiguration,
+    #[error("media packet format changed")]
+    FormatMismatch,
+    #[error("media packet is invalid")]
+    InvalidPacket,
+}
+
 struct QueueState {
     frames: VecDeque<QueuedFrame>,
     summary: AudioQueueSummary,
@@ -906,5 +979,74 @@ mod tests {
             Err(PcmStreamError::FormatMismatch)
         );
         assert!(writer.into_inner().is_empty());
+    }
+
+    #[test]
+    fn framed_media_bridge_encodes_downlink_without_sample_diagnostics() {
+        let bridge = FramedPcmMediaBridge::new(AudioFormat::HFP_WIDEBAND, 4, 2).unwrap();
+        let private_sample_marker = 12_345;
+        let frame = AudioFrame::new(
+            7,
+            AudioFormat::HFP_WIDEBAND,
+            vec![private_sample_marker; usize::from(AudioFormat::HFP_WIDEBAND.samples_per_channel)],
+        )
+        .unwrap();
+        let encoded = bridge.encode_downlink(&frame, 99_000).unwrap();
+        let decoded = AudioPacket::decode(&encoded).unwrap();
+        assert_eq!(decoded.capture_time_micros(), 99_000);
+        assert_eq!(decoded.frame(), &frame);
+        assert!(!format!("{bridge:?}").contains(&private_sample_marker.to_string()));
+    }
+
+    #[test]
+    fn framed_media_bridge_reorders_uplink_and_rejects_bad_or_changed_packets() {
+        let mut bridge = FramedPcmMediaBridge::new(AudioFormat::HFP_WIDEBAND, 4, 2).unwrap();
+        for sequence in [2, 1] {
+            let packet = AudioPacket::new(sequence * 7_500, frame(sequence))
+                .encode()
+                .unwrap();
+            bridge.receive_uplink(&packet).unwrap();
+        }
+        assert_eq!(bridge.pop_uplink().unwrap().sequence(), 1);
+        assert_eq!(bridge.pop_uplink().unwrap().sequence(), 2);
+        assert_eq!(bridge.uplink_summary().emitted, 2);
+        assert_eq!(
+            bridge.receive_uplink(b"private malformed packet marker"),
+            Err(FramedPcmMediaError::InvalidPacket)
+        );
+
+        let narrow = AudioFrame::new(
+            3,
+            AudioFormat::HFP_NARROWBAND,
+            vec![0; usize::from(AudioFormat::HFP_NARROWBAND.samples_per_channel)],
+        )
+        .unwrap();
+        let packet = AudioPacket::new(0, narrow).encode().unwrap();
+        assert_eq!(
+            bridge.receive_uplink(&packet),
+            Err(FramedPcmMediaError::FormatMismatch)
+        );
+    }
+
+    #[test]
+    fn framed_media_bridge_rejects_invalid_configuration_and_downlink_format() {
+        let unsupported = AudioFormat {
+            sample_rate_hz: 48_000,
+            channels: 2,
+            samples_per_channel: 360,
+        };
+        assert!(matches!(
+            FramedPcmMediaBridge::new(unsupported, 4, 2),
+            Err(FramedPcmMediaError::UnsupportedFormat)
+        ));
+        assert!(matches!(
+            FramedPcmMediaBridge::new(AudioFormat::HFP_WIDEBAND, 0, 0),
+            Err(FramedPcmMediaError::InvalidJitterConfiguration)
+        ));
+        let bridge = FramedPcmMediaBridge::new(AudioFormat::HFP_NARROWBAND, 4, 2).unwrap();
+        assert_eq!(
+            bridge.encode_downlink(&frame(1), 0),
+            Err(FramedPcmMediaError::FormatMismatch)
+        );
     }
 }

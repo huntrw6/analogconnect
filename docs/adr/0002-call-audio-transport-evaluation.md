@@ -51,4 +51,8 @@ ten-minute latency growth on the actual Android phone.
   client for bounded reconnection.
 - `VERIFIED_AUTOMATED`: an API-27 Android counterpart validates the server's opaque
   ID, credential, and bounded lifetime without persisting or exposing them.
+- `VERIFIED_AUTOMATED`: a transport-neutral bridge connects live-frame semantics
+  to the diagnostic packet codec and bounded uplink jitter policy while rejecting
+  malformed packets and mid-session format changes. It does not select the final
+  packet carrier.
 - `UNKNOWN`: live transport benchmarks and the final RTP/Opus versus WebRTC choice.
