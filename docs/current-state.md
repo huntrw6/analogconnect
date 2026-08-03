@@ -18,7 +18,8 @@ interpretations are superseded.
   adapter, authenticated API, and Android controls are implemented; no live
   command has been sent to the iPhone.
 - Milestone 6 in-memory audio bridge queues and aggregate instrumentation are
-  implemented; they are not yet connected to PipeWire or an Android transport.
+  implemented alongside a framed-PCM diagnostic codec and bounded jitter buffer;
+  they are not yet connected to PipeWire or an Android transport.
 - The server-side Android control plane now requires bearer authentication for all
   non-health endpoints and refuses startup without an explicit token.
 - An API-27 Android client foundation builds as a signed debug APK on the ARM64
@@ -147,6 +148,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
   no sample values.
 - `VERIFIED_AUTOMATED`: queue depth, drop count, throughput, and maximum observed
   in-memory latency are tracked without recording audio.
+- `VERIFIED_AUTOMATED`: strict versioned PCM packets round-trip, malformed packets
+  fail closed, and the jitter buffer accounts for missing, late, duplicate, and
+  overflow frames while bounding future latency.
 - `UNKNOWN`: PipeWire node binding, codec conversion, network transport latency,
   and intelligibility with real call audio.
 

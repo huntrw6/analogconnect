@@ -33,3 +33,11 @@ ten-minute latency growth on the actual Android phone.
 - Milestone 1 does not take a heavyweight media dependency.
 - The Pi audio bridge must isolate codec/network transport from PipeWire node discovery.
 - The final choice remains `UNKNOWN` until real-device results exist.
+
+## Current implementation evidence
+
+- `VERIFIED_AUTOMATED`: the framed-PCM diagnostic baseline has a strict versioned
+  binary codec for HFP narrowband/wideband frames and rejects malformed packets.
+- `VERIFIED_AUTOMATED`: a bounded jitter buffer handles pre-playout reordering and
+  aggregate loss, late, duplicate, and overflow accounting without logging samples.
+- `UNKNOWN`: live transport benchmarks and the final RTP/Opus versus WebRTC choice.

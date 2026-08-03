@@ -6,6 +6,10 @@ This slice implements the in-memory portion of the bidirectional call-audio brid
 It does not bind PipeWire nodes, capture a call, record samples, or choose the
 Android network codec.
 
+It also implements the versioned framed-PCM diagnostic wire format and a bounded
+sequence-aware jitter buffer required by ADR 0002. This is a benchmark baseline,
+not the selected production transport.
+
 ## Format invariants
 
 - HFP wideband PCM: 16 kHz, mono, 120 samples per 7.5 ms frame.
@@ -27,6 +31,18 @@ Only aggregate counters are observable:
 
 Sample buffers are never serialized, logged, or included in `Debug` output.
 
+## Diagnostic wire framing
+
+- Fixed `ACAP` magic and protocol version 1.
+- Explicit narrowband or wideband HFP format identifier.
+- Big-endian sequence and capture-time fields.
+- Little-endian signed 16-bit PCM payload with exact format-derived length.
+- Unknown versions/formats, reserved-bit changes, and malformed payloads fail closed.
+
+The jitter buffer reorders by sequence, waits for a bounded target depth, drops
+far-future frames on overflow, rejects late/duplicate frames, and reports only
+aggregate received/emitted/lost/reordered-health counters.
+
 ## Synthetic benchmark
 
 ```bash
@@ -40,5 +56,7 @@ throughput, real-time multiple, and drop count.
 
 - `VERIFIED_AUTOMATED`: format, redaction, overflow, direction independence, and
   aggregate API tests pass.
+- `VERIFIED_AUTOMATED`: binary round-trip, malformed-packet rejection, pre-playout
+  reordering, missing/late/duplicate accounting, and bounded future latency pass.
 - `UNKNOWN`: live PipeWire capture/playback, codec conversion, Android transport,
   end-to-end latency, and human-confirmed intelligibility.

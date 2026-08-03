@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, sync::Mutex, time::Instant};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Mutex,
+    time::Instant,
+};
 
 use analogconnect_core::AudioFrame;
 use serde::Serialize;
@@ -22,6 +26,101 @@ pub struct AudioQueueSummary {
 pub struct AudioBridgeSummary {
     pub uplink: AudioQueueSummary,
     pub downlink: AudioQueueSummary,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct JitterBufferSummary {
+    pub depth: usize,
+    pub received: u64,
+    pub emitted: u64,
+    pub duplicate: u64,
+    pub late: u64,
+    pub missing: u64,
+    pub overflow: u64,
+}
+
+pub struct JitterBuffer {
+    capacity: usize,
+    target_depth: usize,
+    frames: BTreeMap<u64, AudioFrame>,
+    next_sequence: Option<u64>,
+    started: bool,
+    summary: JitterBufferSummary,
+}
+
+impl JitterBuffer {
+    pub fn new(capacity: usize, target_depth: usize) -> Result<Self, JitterBufferError> {
+        if capacity == 0 || target_depth == 0 || target_depth > capacity {
+            return Err(JitterBufferError::InvalidCapacity);
+        }
+        Ok(Self {
+            capacity,
+            target_depth,
+            frames: BTreeMap::new(),
+            next_sequence: None,
+            started: false,
+            summary: JitterBufferSummary::default(),
+        })
+    }
+
+    pub fn insert(&mut self, frame: AudioFrame) {
+        self.summary.received = self.summary.received.saturating_add(1);
+        let sequence = frame.sequence();
+        if self
+            .next_sequence
+            .is_some_and(|next_sequence| sequence < next_sequence)
+        {
+            self.summary.late = self.summary.late.saturating_add(1);
+            return;
+        }
+        if self.frames.contains_key(&sequence) {
+            self.summary.duplicate = self.summary.duplicate.saturating_add(1);
+            return;
+        }
+        if self.frames.len() == self.capacity {
+            self.summary.overflow = self.summary.overflow.saturating_add(1);
+            let furthest = *self.frames.last_key_value().unwrap().0;
+            if sequence >= furthest {
+                return;
+            }
+            self.frames.remove(&furthest);
+        }
+        self.frames.insert(sequence, frame);
+        self.summary.depth = self.frames.len();
+    }
+
+    pub fn pop(&mut self) -> Option<AudioFrame> {
+        if !self.started {
+            if self.frames.len() < self.target_depth {
+                return None;
+            }
+            self.next_sequence = self.frames.first_key_value().map(|(sequence, _)| *sequence);
+            self.started = true;
+        }
+        let sequence = self.next_sequence?;
+        self.next_sequence = sequence.checked_add(1);
+        if let Some(frame) = self.frames.remove(&sequence) {
+            self.summary.emitted = self.summary.emitted.saturating_add(1);
+            self.summary.depth = self.frames.len();
+            Some(frame)
+        } else {
+            if !self.frames.is_empty() {
+                self.summary.missing = self.summary.missing.saturating_add(1);
+            }
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn summary(&self) -> JitterBufferSummary {
+        self.summary.clone()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum JitterBufferError {
+    #[error("jitter buffer capacity and target depth must be valid")]
+    InvalidCapacity,
 }
 
 struct QueueState {
@@ -158,5 +257,45 @@ mod tests {
         assert_eq!(summary.uplink.depth, 1);
         assert_eq!(summary.downlink.depth, 0);
         assert_eq!(summary.downlink.dequeued, 1);
+    }
+
+    #[test]
+    fn jitter_buffer_reorders_before_playout() {
+        let mut buffer = JitterBuffer::new(4, 3).unwrap();
+        buffer.insert(frame(2));
+        buffer.insert(frame(1));
+        assert!(buffer.pop().is_none());
+        buffer.insert(frame(3));
+        assert_eq!(buffer.pop().unwrap().sequence(), 1);
+        assert_eq!(buffer.pop().unwrap().sequence(), 2);
+        assert_eq!(buffer.pop().unwrap().sequence(), 3);
+        assert_eq!(buffer.summary().emitted, 3);
+    }
+
+    #[test]
+    fn jitter_buffer_counts_loss_duplicates_and_late_frames() {
+        let mut buffer = JitterBuffer::new(4, 2).unwrap();
+        buffer.insert(frame(10));
+        buffer.insert(frame(12));
+        buffer.insert(frame(12));
+        assert_eq!(buffer.pop().unwrap().sequence(), 10);
+        assert!(buffer.pop().is_none());
+        buffer.insert(frame(9));
+        assert_eq!(buffer.pop().unwrap().sequence(), 12);
+        let summary = buffer.summary();
+        assert_eq!(summary.missing, 1);
+        assert_eq!(summary.duplicate, 1);
+        assert_eq!(summary.late, 1);
+    }
+
+    #[test]
+    fn jitter_buffer_bounds_future_latency() {
+        let mut buffer = JitterBuffer::new(2, 1).unwrap();
+        buffer.insert(frame(5));
+        buffer.insert(frame(7));
+        buffer.insert(frame(6));
+        assert_eq!(buffer.summary().overflow, 1);
+        assert_eq!(buffer.pop().unwrap().sequence(), 5);
+        assert_eq!(buffer.pop().unwrap().sequence(), 6);
     }
 }
