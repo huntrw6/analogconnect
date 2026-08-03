@@ -101,6 +101,14 @@ with one fixed error code. Shutdown closes the network first to unblock receive,
 stops audio to unblock capture, joins workers with a bound, restores routing, and
 is idempotent. Session construction refuses expired one-time credentials.
 
+The Android call-controls section exposes explicit **Start call audio** and
+**Stop call audio** actions. Start requests runtime microphone permission, obtains
+a fresh media grant through the enrolled API, then creates the negotiated-format
+session off the UI thread. Stop invalidates an in-flight start before closing the
+active session. Leaving the foreground always stops audio; destruction also closes
+any attached session before its executor exits. UI results use fixed diagnostics
+and never display media credentials.
+
 ## Synthetic benchmark
 
 ```bash
@@ -228,6 +236,9 @@ and approval are still required before running it on hardware.
 - `DOCUMENTED`: the API-27 build binds the tested pump to blocking Android
   voice-communication capture/playback and the pinned WebSocket transport with
   bounded worker shutdown and fixed failure codes.
+- `DOCUMENTED`: `MainActivity` gates call audio on Android's runtime microphone
+  permission, performs network/device startup off the UI thread, provides stable
+  start/stop control IDs, cancels stale starts, and tears audio down on `onStop`.
 - `VERIFIED_AUTOMATED`: Pi worker adapters move capture PCM into downlink, drain
   uplink into playback, insert exact-format silence on underflow, and retain no
   samples in diagnostics using synthetic streams and queues.

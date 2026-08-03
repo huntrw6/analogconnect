@@ -1,8 +1,10 @@
 package com.analogconnect.client;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.text.InputType;
 import android.text.method.HideReturnsTransformationMethod;
@@ -24,8 +26,11 @@ public final class MainActivity extends Activity {
     private static final String ENDPOINT_KEY = "endpoint";
     private static final String CERTIFICATE_PIN_KEY = "certificate_pin";
     private static final String TLS_NAME_KEY = "tls_name";
+    private static final int RECORD_AUDIO_PERMISSION_REQUEST = 41;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService audioExecutor = Executors.newSingleThreadExecutor();
+    private final Object audioLock = new Object();
     private EditText endpoint;
     private EditText token;
     private EditText certificatePin;
@@ -37,6 +42,10 @@ public final class MainActivity extends Activity {
     private TextView result;
     private TokenVault vault;
     private NsdDiscovery discovery;
+    private Button startAudio;
+    private Button stopAudio;
+    private AndroidCallAudioSession audioSession;
+    private int audioGeneration;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -242,6 +251,23 @@ public final class MainActivity extends Activity {
         });
         layout.addView(sendTone);
 
+        startAudio = new Button(this);
+        startAudio.setId(R.id.start_call_audio);
+        startAudio.setText("Start call audio");
+        startAudio.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) { requestStartCallAudio(); }
+        });
+        layout.addView(startAudio);
+
+        stopAudio = new Button(this);
+        stopAudio.setId(R.id.stop_call_audio);
+        stopAudio.setText("Stop call audio");
+        stopAudio.setEnabled(false);
+        stopAudio.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) { stopCallAudio(true); }
+        });
+        layout.addView(stopAudio);
+
         result = new TextView(this);
         result.setId(R.id.result);
         result.setText("Not checked");
@@ -415,6 +441,118 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void requestStartCallAudio() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO},
+                    RECORD_AUDIO_PERMISSION_REQUEST);
+            return;
+        }
+        startCallAudio();
+    }
+
+    private void startCallAudio() {
+        final int generation;
+        synchronized (audioLock) {
+            if (audioSession != null) {
+                result.setText("Call audio is already active");
+                return;
+            }
+            generation = ++audioGeneration;
+        }
+        startAudio.setEnabled(false);
+        stopAudio.setEnabled(true);
+        result.setText("Starting call audio…");
+        final String endpointValue = endpoint.getText().toString().trim();
+        final String pinValue = certificatePin.getText().toString().trim();
+        final String tlsNameValue = tlsName.getText().toString().trim();
+        audioExecutor.execute(new Runnable() {
+            @Override public void run() {
+                AndroidCallAudioSession created = null;
+                String message;
+                boolean active = false;
+                try {
+                    String savedToken = vault.load();
+                    MediaSessionCredentials credentials = new ApiClient(pinValue, tlsNameValue)
+                            .createMediaSession(endpointValue, savedToken);
+                    created = AndroidCallAudioSession.connect(getApplicationContext(),
+                            endpointValue, pinValue, tlsNameValue, credentials);
+                    created.start();
+                    synchronized (audioLock) {
+                        if (generation == audioGeneration && audioSession == null) {
+                            audioSession = created;
+                            created = null;
+                            active = true;
+                        }
+                    }
+                    message = active ? "Call audio active" : "Call audio start cancelled";
+                } catch (Exception error) {
+                    message = "Call audio failed: " + safeMessage(error);
+                } finally {
+                    if (created != null) {
+                        created.close();
+                    }
+                }
+                final String finalMessage = message;
+                final boolean finalActive = active;
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (generation == audioGeneration && !isFinishing()) {
+                            startAudio.setEnabled(!finalActive);
+                            stopAudio.setEnabled(finalActive);
+                            result.setText(finalMessage);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    private void stopCallAudio(final boolean report) {
+        final AndroidCallAudioSession stopped;
+        synchronized (audioLock) {
+            audioGeneration++;
+            stopped = audioSession;
+            audioSession = null;
+        }
+        startAudio.setEnabled(true);
+        stopAudio.setEnabled(false);
+        if (report) {
+            result.setText("Stopping call audio…");
+        }
+        audioExecutor.execute(new Runnable() {
+            @Override public void run() {
+                if (stopped != null) {
+                    stopped.close();
+                }
+                if (report) {
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            if (!isFinishing()) {
+                                result.setText("Call audio stopped");
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != RECORD_AUDIO_PERMISSION_REQUEST) {
+            return;
+        }
+        if (grantResults.length == 1
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            startCallAudio();
+        } else {
+            result.setText("Microphone permission is required for call audio");
+        }
+    }
+
     private static String safeMessage(Exception error) {
         String message = error.getMessage();
         return message == null || message.trim().isEmpty() ? "unexpected error" : message;
@@ -455,6 +593,12 @@ public final class MainActivity extends Activity {
         discoverDaemon();
     }
 
+    @Override
+    protected void onStop() {
+        stopCallAudio(false);
+        super.onStop();
+    }
+
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
@@ -462,6 +606,16 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         discovery.stop();
+        AndroidCallAudioSession stopped;
+        synchronized (audioLock) {
+            audioGeneration++;
+            stopped = audioSession;
+            audioSession = null;
+        }
+        if (stopped != null) {
+            stopped.close();
+        }
+        audioExecutor.shutdown();
         executor.shutdownNow();
         super.onDestroy();
     }
