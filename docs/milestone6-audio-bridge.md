@@ -81,6 +81,11 @@ This boundary does not invoke a shell and accepts only locator-produced numeric
 serials plus one of the two fixed HFP formats. No automated test starts a real
 audio stream.
 
+The adjacent PCM adapters reassemble short reads into exact 7.5 ms frames, assign
+monotonic downlink sequence numbers, reject an EOF that bisects a frame, and write
+uplink samples only when their format matches the active stream. Conversion is
+explicitly little-endian to match the framed diagnostic codec and Raspberry Pi.
+
 ## Evidence
 
 - `VERIFIED_AUTOMATED`: format, redaction, overflow, direction independence, and
@@ -97,6 +102,9 @@ audio stream.
 - `VERIFIED_AUTOMATED`: capture/playback command construction binds the correct
   source/sink direction for both HFP rates, fixes mono signed-16-bit framing and
   7.5 ms latency, and rejects non-HFP formats.
+- `VERIFIED_AUTOMATED`: PCM adapters reconstruct partial reads, preserve signed
+  little-endian samples, sequence consecutive frames, reject truncated input and
+  format changes, and expose no sample values in errors.
 - `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16
   kHz mono 7.5 ms frames, uses voice-communication capture/playback, restores prior
   routing on stop, and conditionally enables platform echo/noise processing.

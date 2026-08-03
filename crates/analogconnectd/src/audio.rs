@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, VecDeque},
+    io::{Read, Write},
     path::PathBuf,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     sync::Mutex,
@@ -397,6 +398,115 @@ pub enum PwCatStreamError {
     PipeUnavailable,
 }
 
+/// Converts the raw little-endian PCM emitted by `pw-cat` into exact HFP frames.
+/// Audio bytes are never retained after the returned frame is constructed.
+pub struct PcmFrameReader<R> {
+    reader: R,
+    format: AudioFormat,
+    next_sequence: u64,
+}
+
+impl<R: Read> PcmFrameReader<R> {
+    pub fn new(reader: R, format: AudioFormat) -> Result<Self, PcmStreamError> {
+        validate_hfp_format(format)?;
+        Ok(Self {
+            reader,
+            format,
+            next_sequence: 0,
+        })
+    }
+
+    pub fn read_frame(&mut self) -> Result<Option<AudioFrame>, PcmStreamError> {
+        let sample_count = usize::from(self.format.samples_per_channel);
+        let mut bytes = vec![0_u8; sample_count * size_of::<i16>()];
+        let mut filled = 0;
+        while filled < bytes.len() {
+            match self.reader.read(&mut bytes[filled..]) {
+                Ok(0) if filled == 0 => return Ok(None),
+                Ok(0) => return Err(PcmStreamError::TruncatedFrame),
+                Ok(count) => filled += count,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(_) => return Err(PcmStreamError::ReadFailed),
+            }
+        }
+        let samples = bytes
+            .chunks_exact(2)
+            .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        let sequence = self.next_sequence;
+        self.next_sequence = self
+            .next_sequence
+            .checked_add(1)
+            .ok_or(PcmStreamError::SequenceExhausted)?;
+        AudioFrame::new(sequence, self.format, samples)
+            .map(Some)
+            .map_err(|_| PcmStreamError::InvalidFrame)
+    }
+
+    pub fn into_inner(self) -> R {
+        self.reader
+    }
+}
+
+/// Writes exact HFP frames to the raw little-endian PCM accepted by `pw-cat`.
+pub struct PcmFrameWriter<W> {
+    writer: W,
+    format: AudioFormat,
+}
+
+impl<W: Write> PcmFrameWriter<W> {
+    pub fn new(writer: W, format: AudioFormat) -> Result<Self, PcmStreamError> {
+        validate_hfp_format(format)?;
+        Ok(Self { writer, format })
+    }
+
+    pub fn write_frame(&mut self, frame: &AudioFrame) -> Result<(), PcmStreamError> {
+        if frame.format() != self.format {
+            return Err(PcmStreamError::FormatMismatch);
+        }
+        let mut bytes = Vec::with_capacity(std::mem::size_of_val(frame.samples()));
+        for sample in frame.samples() {
+            bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        self.writer
+            .write_all(&bytes)
+            .map_err(|_| PcmStreamError::WriteFailed)
+    }
+
+    pub fn into_inner(self) -> W {
+        self.writer
+    }
+}
+
+fn validate_hfp_format(format: AudioFormat) -> Result<(), PcmStreamError> {
+    if matches!(
+        format,
+        AudioFormat::HFP_NARROWBAND | AudioFormat::HFP_WIDEBAND
+    ) {
+        Ok(())
+    } else {
+        Err(PcmStreamError::UnsupportedFormat)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum PcmStreamError {
+    #[error("PCM format is unsupported")]
+    UnsupportedFormat,
+    #[error("PCM input ended within a frame")]
+    TruncatedFrame,
+    #[error("PCM input could not be read")]
+    ReadFailed,
+    #[error("PCM output could not be written")]
+    WriteFailed,
+    #[error("PCM frame format does not match the stream")]
+    FormatMismatch,
+    #[error("PCM frame sequence is exhausted")]
+    SequenceExhausted,
+    #[error("PCM frame is invalid")]
+    InvalidFrame,
+}
+
 struct QueueState {
     frames: VecDeque<QueuedFrame>,
     summary: AudioQueueSummary,
@@ -683,5 +793,69 @@ mod tests {
         let error = PwCatCommand::new(PwCatDirection::Capture, 7, unsupported).unwrap_err();
         assert_eq!(error, PwCatStreamError::UnsupportedFormat);
         assert!(!format!("{error:?}").contains('/'));
+    }
+
+    #[test]
+    fn pcm_reader_reassembles_partial_reads_and_sequences_frames() {
+        struct SmallReads {
+            bytes: std::io::Cursor<Vec<u8>>,
+        }
+        impl Read for SmallReads {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                let limit = output.len().min(3);
+                self.bytes.read(&mut output[..limit])
+            }
+        }
+
+        let sample_count = usize::from(AudioFormat::HFP_NARROWBAND.samples_per_channel);
+        let mut bytes = Vec::new();
+        for sample in (0..sample_count * 2).map(|value| value as i16 - 60) {
+            bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        let mut reader = PcmFrameReader::new(
+            SmallReads {
+                bytes: std::io::Cursor::new(bytes),
+            },
+            AudioFormat::HFP_NARROWBAND,
+        )
+        .unwrap();
+        let first = reader.read_frame().unwrap().unwrap();
+        let second = reader.read_frame().unwrap().unwrap();
+        assert_eq!(first.sequence(), 0);
+        assert_eq!(second.sequence(), 1);
+        assert_eq!(first.samples()[0], -60);
+        assert_eq!(second.samples()[sample_count - 1], 59);
+        assert!(reader.read_frame().unwrap().is_none());
+    }
+
+    #[test]
+    fn pcm_reader_rejects_truncated_frames_without_disclosing_samples() {
+        let private_sample_marker = 12_345_i16.to_le_bytes();
+        let mut reader = PcmFrameReader::new(
+            std::io::Cursor::new(private_sample_marker),
+            AudioFormat::HFP_NARROWBAND,
+        )
+        .unwrap();
+        let error = reader.read_frame().unwrap_err();
+        assert_eq!(error, PcmStreamError::TruncatedFrame);
+        assert!(!format!("{error:?}").contains("12345"));
+    }
+
+    #[test]
+    fn pcm_writer_uses_little_endian_and_rejects_format_changes() {
+        let samples = vec![-2_i16; usize::from(AudioFormat::HFP_NARROWBAND.samples_per_channel)];
+        let narrow = AudioFrame::new(9, AudioFormat::HFP_NARROWBAND, samples).unwrap();
+        let mut writer = PcmFrameWriter::new(Vec::new(), AudioFormat::HFP_NARROWBAND).unwrap();
+        writer.write_frame(&narrow).unwrap();
+        let bytes = writer.into_inner();
+        assert_eq!(&bytes[..2], &(-2_i16).to_le_bytes());
+        assert_eq!(bytes.len(), 120);
+
+        let mut writer = PcmFrameWriter::new(Vec::new(), AudioFormat::HFP_NARROWBAND).unwrap();
+        assert_eq!(
+            writer.write_frame(&frame(10)),
+            Err(PcmStreamError::FormatMismatch)
+        );
+        assert!(writer.into_inner().is_empty());
     }
 }
