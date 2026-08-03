@@ -14,8 +14,9 @@ interpretations are superseded.
 - Milestone 4 outbound MAP messaging is complete: validation, authenticated API,
   redacted transport, Android confirmation UI, iPhone acceptance, and recipient
   delivery have been verified.
-- Milestone 5 HFP call-control domain and AT encoding are implemented behind a
-  mock transport; no live command has been sent to the iPhone.
+- Milestone 5 HFP call-control domain, AT encoding, WirePlumber Telephony D-Bus
+  adapter, authenticated API, and Android controls are implemented; no live
+  command has been sent to the iPhone.
 - Milestone 6 in-memory audio bridge queues and aggregate instrumentation are
   implemented; they are not yet connected to PipeWire or an Android transport.
 - The server-side Android control plane now requires bearer authentication for all
@@ -126,8 +127,13 @@ bearer token and can perform privacy-safe health and authenticated status checks
   output and backend errors contain no command payload.
 - `VERIFIED_AUTOMATED`: validated commands encode to HFP AT operations; mute uses
   microphone gain zero and restores the last configured gain.
-- `UNKNOWN`: which live transport seam can safely share WirePlumber's existing
-  RFCOMM ownership without disrupting the verified SLC.
+- `DOCUMENTED`: PipeWire 1.4.2 exposes an oFono-compatible Telephony D-Bus API
+  with AudioGateway dial/hangup/DTMF and per-call answer/hangup methods.
+- `VERIFIED_AUTOMATED`: the installed WirePlumber owns that service, and the
+  adapter privately discovers numeric gateway/call paths without identity fields.
+- `VERIFIED_AUTOMATED`: authenticated, bounded call-command API requests and the
+  Android API-27 controls build and pass mock-backed tests.
+- `UNKNOWN`: real-iPhone acceptance and effects of commands sent through this seam.
 
 ### Audio bridge software
 

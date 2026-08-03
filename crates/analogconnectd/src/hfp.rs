@@ -1,4 +1,8 @@
-use std::sync::Mutex;
+use std::{
+    path::PathBuf,
+    process::{Command, Stdio},
+    sync::Mutex,
+};
 
 use analogconnect_core::{CallCommand, CallState, Gain};
 use thiserror::Error;
@@ -14,6 +18,197 @@ pub trait AtTransport: Send + Sync {
 
     /// Sends one complete AT command. Implementations must not log command text.
     fn send(&self, command: &str) -> Result<(), Self::Error>;
+}
+
+const TELEPHONY_SERVICE: &str = "org.pipewire.Telephony";
+const TELEPHONY_ROOT: &str = "/org/pipewire/Telephony";
+const AUDIO_GATEWAY_INTERFACE: &str = "org.pipewire.Telephony.AudioGateway1";
+const CALL_INTERFACE: &str = "org.pipewire.Telephony.Call1";
+
+pub trait DbusCommandRunner: Send + Sync {
+    type Error;
+
+    /// Runs busctl without logging arguments or output. Output may contain only
+    /// WirePlumber's numeric telephony object paths and must not be persisted.
+    fn run(&self, arguments: &[&str]) -> Result<String, Self::Error>;
+}
+
+pub struct BusctlRunner {
+    executable: PathBuf,
+}
+
+impl BusctlRunner {
+    #[must_use]
+    pub fn new(executable: impl Into<PathBuf>) -> Self {
+        Self {
+            executable: executable.into(),
+        }
+    }
+}
+
+impl Default for BusctlRunner {
+    fn default() -> Self {
+        Self::new("busctl")
+    }
+}
+
+impl DbusCommandRunner for BusctlRunner {
+    type Error = ();
+
+    fn run(&self, arguments: &[&str]) -> Result<String, Self::Error> {
+        let output = Command::new(&self.executable)
+            .args(arguments)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .map_err(|_| ())?;
+        if !output.status.success() {
+            return Err(());
+        }
+        String::from_utf8(output.stdout).map_err(|_| ())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum WirePlumberBackendError {
+    #[error("WirePlumber telephony service is unavailable")]
+    Unavailable,
+    #[error("WirePlumber telephony object state is ambiguous")]
+    Ambiguous,
+    #[error("call command is unsupported by the WirePlumber telephony API")]
+    Unsupported,
+    #[error("WirePlumber rejected the call command")]
+    Rejected,
+}
+
+/// Controls the native HFP backend through PipeWire's supported Telephony D-Bus
+/// service, preserving WirePlumber's ownership of the RFCOMM connection.
+pub struct WirePlumberBackend<R> {
+    runner: R,
+}
+
+impl<R> WirePlumberBackend<R> {
+    #[must_use]
+    pub const fn new(runner: R) -> Self {
+        Self { runner }
+    }
+}
+
+impl<R> WirePlumberBackend<R>
+where
+    R: DbusCommandRunner,
+{
+    fn paths(&self) -> Result<TelephonyPaths, WirePlumberBackendError> {
+        let output = self
+            .runner
+            .run(&["--user", "tree", TELEPHONY_SERVICE])
+            .map_err(|_| WirePlumberBackendError::Unavailable)?;
+        TelephonyPaths::parse(&output)
+    }
+
+    fn call(
+        &self,
+        path: &str,
+        interface: &str,
+        method: &str,
+        values: &[&str],
+    ) -> Result<(), WirePlumberBackendError> {
+        let mut arguments = vec!["--user", "call", TELEPHONY_SERVICE, path, interface, method];
+        arguments.extend_from_slice(values);
+        self.runner
+            .run(&arguments)
+            .map(|_| ())
+            .map_err(|_| WirePlumberBackendError::Rejected)
+    }
+}
+
+impl<R> HfpCommandBackend for WirePlumberBackend<R>
+where
+    R: DbusCommandRunner,
+{
+    type Error = WirePlumberBackendError;
+
+    fn execute(&self, command: &CallCommand) -> Result<(), Self::Error> {
+        let paths = self.paths()?;
+        match command {
+            CallCommand::Answer => self.call(paths.only_call()?, CALL_INTERFACE, "Answer", &[]),
+            CallCommand::Reject | CallCommand::HangUp => {
+                self.call(&paths.gateway, AUDIO_GATEWAY_INTERFACE, "HangupAll", &[])
+            }
+            CallCommand::Dial(target) => self.call(
+                &paths.gateway,
+                AUDIO_GATEWAY_INTERFACE,
+                "Dial",
+                &["s", target.as_str()],
+            ),
+            CallCommand::SendDtmf(tone) => {
+                let value = tone.value().to_string();
+                self.call(
+                    &paths.gateway,
+                    AUDIO_GATEWAY_INTERFACE,
+                    "SendTones",
+                    &["s", &value],
+                )
+            }
+            CallCommand::SetMicrophoneMuted(_)
+            | CallCommand::SetSpeakerGain(_)
+            | CallCommand::SetMicrophoneGain(_) => Err(WirePlumberBackendError::Unsupported),
+        }
+    }
+}
+
+struct TelephonyPaths {
+    gateway: String,
+    calls: Vec<String>,
+}
+
+impl TelephonyPaths {
+    fn parse(output: &str) -> Result<Self, WirePlumberBackendError> {
+        let mut gateways = Vec::new();
+        let mut calls = Vec::new();
+        for token in output.split_whitespace() {
+            let Some(path) = token.strip_prefix(TELEPHONY_ROOT) else {
+                continue;
+            };
+            if let Some(id) = path.strip_prefix("/ag")
+                && !id.is_empty()
+                && id.chars().all(|character| character.is_ascii_digit())
+            {
+                gateways.push(format!("{TELEPHONY_ROOT}{path}"));
+                continue;
+            }
+            if let Some((gateway_id, call_id)) = path
+                .strip_prefix("/ag")
+                .and_then(|rest| rest.split_once("/call"))
+                && !gateway_id.is_empty()
+                && !call_id.is_empty()
+                && gateway_id
+                    .chars()
+                    .all(|character| character.is_ascii_digit())
+                && call_id.chars().all(|character| character.is_ascii_digit())
+            {
+                calls.push(format!("{TELEPHONY_ROOT}{path}"));
+            }
+        }
+        gateways.sort();
+        gateways.dedup();
+        calls.sort();
+        calls.dedup();
+        if gateways.len() != 1 {
+            return Err(WirePlumberBackendError::Ambiguous);
+        }
+        let gateway = gateways.remove(0);
+        calls.retain(|call| call.starts_with(&format!("{gateway}/call")));
+        Ok(Self { gateway, calls })
+    }
+
+    fn only_call(&self) -> Result<&str, WirePlumberBackendError> {
+        if self.calls.len() == 1 {
+            Ok(&self.calls[0])
+        } else {
+            Err(WirePlumberBackendError::Ambiguous)
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -300,5 +495,95 @@ mod tests {
 
         let commands = backend.transport.commands.lock().unwrap();
         assert_eq!(commands.as_slice(), ["AT+VGM=7", "AT+VGM=0", "AT+VGM=9"]);
+    }
+
+    struct MockDbusRunner {
+        tree: String,
+        commands: Mutex<Vec<Vec<String>>>,
+        succeeds: bool,
+    }
+
+    impl DbusCommandRunner for MockDbusRunner {
+        type Error = ();
+
+        fn run(&self, arguments: &[&str]) -> Result<String, Self::Error> {
+            self.commands.lock().unwrap().push(
+                arguments
+                    .iter()
+                    .map(|argument| (*argument).to_owned())
+                    .collect(),
+            );
+            if !self.succeeds {
+                return Err(());
+            }
+            if arguments.contains(&"tree") {
+                Ok(self.tree.clone())
+            } else {
+                Ok(String::new())
+            }
+        }
+    }
+
+    fn dbus_backend(tree: &str) -> WirePlumberBackend<MockDbusRunner> {
+        WirePlumberBackend::new(MockDbusRunner {
+            tree: tree.to_owned(),
+            commands: Mutex::new(Vec::new()),
+            succeeds: true,
+        })
+    }
+
+    #[test]
+    fn wireplumber_backend_discovers_numeric_private_paths() {
+        let backend = dbus_backend(
+            "└─ /org/pipewire/Telephony\n  └─ /org/pipewire/Telephony/ag7\n    └─ /org/pipewire/Telephony/ag7/call3\n",
+        );
+        backend.execute(&CallCommand::Answer).unwrap();
+        let commands = backend.runner.commands.lock().unwrap();
+        assert_eq!(
+            commands[1],
+            [
+                "--user",
+                "call",
+                TELEPHONY_SERVICE,
+                "/org/pipewire/Telephony/ag7/call3",
+                CALL_INTERFACE,
+                "Answer",
+            ]
+        );
+    }
+
+    #[test]
+    fn wireplumber_backend_uses_gateway_methods_and_redacted_errors() {
+        let backend = dbus_backend("└─ /org/pipewire/Telephony/ag2\n");
+        let target_text = "+12025550101";
+        backend
+            .execute(&CallCommand::Dial(DialTarget::parse(target_text).unwrap()))
+            .unwrap();
+        backend.execute(&CallCommand::HangUp).unwrap();
+        let commands = backend.runner.commands.lock().unwrap();
+        assert_eq!(commands[1].last().unwrap(), target_text);
+        assert_eq!(commands[3].last().unwrap(), "HangupAll");
+        assert!(!format!("{:?}", WirePlumberBackendError::Rejected).contains(target_text));
+        assert!(
+            !WirePlumberBackendError::Rejected
+                .to_string()
+                .contains(target_text)
+        );
+    }
+
+    #[test]
+    fn wireplumber_backend_refuses_ambiguous_or_unsupported_control() {
+        let ambiguous =
+            dbus_backend("├─ /org/pipewire/Telephony/ag0\n└─ /org/pipewire/Telephony/ag1\n");
+        assert_eq!(
+            ambiguous.execute(&CallCommand::HangUp),
+            Err(WirePlumberBackendError::Ambiguous)
+        );
+
+        let backend = dbus_backend("└─ /org/pipewire/Telephony/ag0\n");
+        assert_eq!(
+            backend.execute(&CallCommand::SetSpeakerGain(Gain::new(8).unwrap())),
+            Err(WirePlumberBackendError::Unsupported)
+        );
     }
 }

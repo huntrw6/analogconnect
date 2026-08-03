@@ -92,6 +92,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AudioBridgeSummary"
+  /api/v1/calls/commands:
+    post:
+      operationId: executeCallCommand
+      security:
+        - bearerAuth: []
+      description: Executes one validated HFP command through WirePlumber without returning private call data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallCommand"
+      responses:
+        "202":
+          description: WirePlumber accepted the command.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallCommandResponse"
+        "422":
+          description: Command arguments failed validation without being echoed.
+        "502":
+          description: WirePlumber was unavailable or rejected the command.
 components:
   securitySchemes:
     bearerAuth:
@@ -228,6 +251,41 @@ components:
           minLength: 1
           maxLength: 2000
     SendMessageResponse:
+      type: object
+      additionalProperties: false
+      required: [accepted]
+      properties:
+        accepted:
+          const: true
+    CallCommand:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [action]
+          properties:
+            action:
+              enum: [answer, reject, hang_up]
+        - type: object
+          additionalProperties: false
+          required: [action, target]
+          properties:
+            action:
+              const: dial
+            target:
+              type: string
+              minLength: 1
+              maxLength: 32
+        - type: object
+          additionalProperties: false
+          required: [action, tone]
+          properties:
+            action:
+              const: send_dtmf
+            tone:
+              type: string
+              minLength: 1
+              maxLength: 1
+    CallCommandResponse:
       type: object
       additionalProperties: false
       required: [accepted]

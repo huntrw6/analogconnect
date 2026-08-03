@@ -32,31 +32,55 @@ final class ApiClient {
             JSONObject request = new JSONObject();
             request.put("recipient", recipient);
             request.put("body", body);
-            byte[] payload = request.toString().getBytes(StandardCharsets.UTF_8);
-            URL url = Endpoint.parse(endpoint, "/api/v1/messages");
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
-            connection.setRequestMethod("POST");
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setRequestProperty("Authorization", "Bearer " + token);
-            connection.setFixedLengthStreamingMode(payload.length);
-            connection.setDoOutput(true);
-            try {
-                OutputStream output = connection.getOutputStream();
-                output.write(payload);
-                output.close();
-                int status = connection.getResponseCode();
-                if (status != HttpURLConnection.HTTP_ACCEPTED) {
-                    throw new IOException("Daemon returned HTTP " + status);
-                }
-                return status;
-            } finally {
-                connection.disconnect();
-            }
+            return post(endpoint, "/api/v1/messages", token, request);
         } catch (JSONException error) {
             throw new IOException("Could not encode message request");
+        }
+    }
+
+    int executeCallCommand(String endpoint, String token, String action, String value)
+            throws IOException {
+        if (token == null || token.isEmpty()) {
+            throw new IOException("Enrollment token is missing");
+        }
+        try {
+            JSONObject request = new JSONObject();
+            request.put("action", action);
+            if ("dial".equals(action)) {
+                request.put("target", value);
+            } else if ("send_dtmf".equals(action)) {
+                request.put("tone", value);
+            }
+            return post(endpoint, "/api/v1/calls/commands", token, request);
+        } catch (JSONException error) {
+            throw new IOException("Could not encode call command");
+        }
+    }
+
+    private int post(String endpoint, String path, String token, JSONObject request)
+            throws IOException {
+        byte[] payload = request.toString().getBytes(StandardCharsets.UTF_8);
+        URL url = Endpoint.parse(endpoint, path);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setConnectTimeout(TIMEOUT_MS);
+        connection.setReadTimeout(TIMEOUT_MS);
+        connection.setRequestMethod("POST");
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Content-Type", "application/json");
+        connection.setRequestProperty("Authorization", "Bearer " + token);
+        connection.setFixedLengthStreamingMode(payload.length);
+        connection.setDoOutput(true);
+        try {
+            OutputStream output = connection.getOutputStream();
+            output.write(payload);
+            output.close();
+            int status = connection.getResponseCode();
+            if (status != HttpURLConnection.HTTP_ACCEPTED) {
+                throw new IOException("Daemon returned HTTP " + status);
+            }
+            return status;
+        } finally {
+            connection.disconnect();
         }
     }
 

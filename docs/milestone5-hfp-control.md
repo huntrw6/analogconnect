@@ -3,8 +3,9 @@
 ## Scope
 
 This slice defines and validates call-control behavior without taking ownership of
-the live HFP RFCOMM connection. WirePlumber currently owns the verified SLC, so a
-live adapter must not be selected until its sharing/control interface is confirmed.
+the live HFP RFCOMM connection. The production adapter uses PipeWire 1.4.2's
+supported `org.pipewire.Telephony` user-bus service, which preserves WirePlumber's
+ownership of the verified SLC.
 
 ## Command model
 
@@ -26,10 +27,22 @@ live adapter must not be selected until its sharing/control interface is confirm
 - Local call state changes only after transport success.
 - Transport errors never include AT command text.
 - No mutation endpoint is exposed before Android-client authentication exists.
+- D-Bus object discovery accepts only numeric `/agN` and `/callN` paths, rejects
+  zero or multiple gateways, and never reads call identity properties.
+- Authentication and a 1024-byte limit are applied before command JSON parsing.
+- Android dialing and hangup require an explicit confirmation dialog.
+- PipeWire's Telephony interface does not expose microphone/speaker gain methods;
+  the production adapter explicitly rejects those commands instead of guessing.
 
 ## Evidence
 
 - `VERIFIED_AUTOMATED`: command validation, redaction, state gating, backend
   failure preservation, AT encoding, and mute restoration tests pass.
-- `UNKNOWN`: the correct production control seam while WirePlumber owns RFCOMM.
+- `DOCUMENTED`: PipeWire 1.4.2 source defines `AudioGateway1` methods `Dial`,
+  `HangupAll`, and `SendTones`, plus `Call1` methods `Answer` and `Hangup`.
+- `VERIFIED_AUTOMATED`: the installed WirePlumber owns `org.pipewire.Telephony`
+  and exposes the documented root manager interface.
+- `VERIFIED_AUTOMATED`: numeric object discovery, ambiguity rejection, D-Bus
+  command mapping, authenticated API behavior, redacted failures, and Android
+  API-27 packaging pass automated tests.
 - `UNKNOWN`: command acceptance and behavior with the real iPhone.

@@ -14,9 +14,10 @@ reversible procedures, beginning with hangup during a test call.
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Sent one deliberately reviewed SMS from the Android client through the authenticated
-Pi API and iPhone MAP transport. The intended recipient confirmed receipt. No
-recipient, body, handle, timestamp, or other private message data was retained.
+Implemented the supported WirePlumber Telephony D-Bus HFP backend, authenticated
+call-command API, and confirmation-based Android controls. Automated tests prove
+numeric private-path discovery, ambiguity rejection, redacted errors, and command
+mapping without taking RFCOMM ownership.
 
 ## Evidence
 
@@ -114,8 +115,8 @@ SCO cleanly torn down after hangup
 - HFP command validation requires guided test-call interaction with the iPhone.
 
 ## Next action
-Identify the safe live RFCOMM command ownership seam, then validate hangup during a
-test call without recording audio, telephone numbers, or private call metadata.
+Validate HangupAll during a test call through WirePlumber's supported Telephony
+D-Bus seam without recording audio, telephone numbers, or private call metadata.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing

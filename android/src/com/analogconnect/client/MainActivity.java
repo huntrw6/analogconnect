@@ -28,6 +28,8 @@ public final class MainActivity extends Activity {
     private EditText token;
     private EditText recipient;
     private EditText messageBody;
+    private EditText dialTarget;
+    private EditText dtmfTone;
     private TextView result;
     private TokenVault vault;
 
@@ -130,6 +132,75 @@ public final class MainActivity extends Activity {
         });
         layout.addView(send);
 
+        TextView callTitle = new TextView(this);
+        callTitle.setText("Call controls");
+        callTitle.setTextSize(20);
+        callTitle.setPadding(0, dp(24), 0, dp(8));
+        layout.addView(callTitle);
+
+        dialTarget = new EditText(this);
+        dialTarget.setHint("Number to dial");
+        dialTarget.setSingleLine(true);
+        dialTarget.setInputType(InputType.TYPE_CLASS_PHONE);
+        layout.addView(dialTarget);
+
+        Button dial = new Button(this);
+        dial.setText("Review and dial");
+        dial.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String target = dialTarget.getText().toString().trim();
+                if (target.isEmpty()) {
+                    result.setText("Dial target is required");
+                } else {
+                    confirmCallCommand("Place this call?", "Dial: " + target, "dial", target);
+                }
+            }
+        });
+        layout.addView(dial);
+
+        Button answer = new Button(this);
+        answer.setText("Answer incoming call");
+        answer.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                executeCallCommand("answer", "");
+            }
+        });
+        layout.addView(answer);
+
+        Button hangUp = new Button(this);
+        hangUp.setText("Hang up or reject");
+        hangUp.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                confirmCallCommand("End the call?", "This will hang up or reject the current call.",
+                        "hang_up", "");
+            }
+        });
+        layout.addView(hangUp);
+
+        dtmfTone = new EditText(this);
+        dtmfTone.setHint("DTMF tone");
+        dtmfTone.setSingleLine(true);
+        dtmfTone.setInputType(InputType.TYPE_CLASS_PHONE);
+        layout.addView(dtmfTone);
+
+        Button sendTone = new Button(this);
+        sendTone.setText("Send DTMF tone");
+        sendTone.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String tone = dtmfTone.getText().toString().trim();
+                if (tone.length() != 1) {
+                    result.setText("Enter exactly one DTMF tone");
+                } else {
+                    executeCallCommand("send_dtmf", tone);
+                }
+            }
+        });
+        layout.addView(sendTone);
+
         result = new TextView(this);
         result.setText("Not checked");
         result.setPadding(0, dp(20), 0, 0);
@@ -227,6 +298,45 @@ public final class MainActivity extends Activity {
                         if (clearBody) {
                             messageBody.setText("");
                         }
+                    }
+                });
+            }
+        });
+    }
+
+    private void confirmCallCommand(String title, String message, final String action,
+            final String value) {
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Confirm", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        executeCallCommand(action, value);
+                    }
+                })
+                .show();
+    }
+
+    private void executeCallCommand(final String action, final String value) {
+        result.setText("Sending call command…");
+        final String endpointValue = endpoint.getText().toString();
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                String message;
+                try {
+                    new ApiClient().executeCallCommand(endpointValue, vault.load(), action, value);
+                    message = "Call command accepted";
+                } catch (Exception error) {
+                    message = "Call command failed: " + safeMessage(error);
+                }
+                final String finalMessage = message;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        result.setText(finalMessage);
                     }
                 });
             }

@@ -17,8 +17,9 @@ use axum::{
     routing::get,
 };
 use contacts::ContactSummary;
+use hfp::{BusctlRunner, HfpCommandBackend, WirePlumberBackend, WirePlumberBackendError};
 use messages::{ImsgMapBackend, MapSendBackend, MessageSyncSummary, OutboundMessage};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 pub const PROTOCOL_VERSION: u16 = 1;
@@ -31,18 +32,38 @@ pub struct AppState {
     audio_summary: Arc<RwLock<AudioBridgeSummary>>,
     auth_token: Arc<AuthToken>,
     message_sender: Arc<dyn MapSendBackend>,
+    call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
     started_at: Instant,
 }
 
 impl AppState {
     pub fn new(status: SystemStatus, auth_token: AuthToken) -> Self {
-        Self::with_message_sender(status, auth_token, Arc::new(ImsgMapBackend::default()))
+        Self::with_backends(
+            status,
+            auth_token,
+            Arc::new(ImsgMapBackend::default()),
+            Arc::new(WirePlumberBackend::new(BusctlRunner::default())),
+        )
     }
 
     pub fn with_message_sender(
         status: SystemStatus,
         auth_token: AuthToken,
         message_sender: Arc<dyn MapSendBackend>,
+    ) -> Self {
+        Self::with_backends(
+            status,
+            auth_token,
+            message_sender,
+            Arc::new(WirePlumberBackend::new(BusctlRunner::default())),
+        )
+    }
+
+    pub fn with_backends(
+        status: SystemStatus,
+        auth_token: AuthToken,
+        message_sender: Arc<dyn MapSendBackend>,
+        call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
     ) -> Self {
         Self {
             status: Arc::new(RwLock::new(status)),
@@ -51,6 +72,7 @@ impl AppState {
             audio_summary: Arc::new(RwLock::new(AudioBridgeSummary::default())),
             auth_token: Arc::new(auth_token),
             message_sender,
+            call_backend,
             started_at: Instant::now(),
         }
     }
@@ -71,6 +93,10 @@ pub fn app(state: AppState) -> Router {
         .route("/api/v1/contacts/summary", get(contact_summary))
         .route("/api/v1/messages/summary", get(message_summary))
         .route("/api/v1/messages", axum::routing::post(send_message))
+        .route(
+            "/api/v1/calls/commands",
+            axum::routing::post(execute_call_command),
+        )
         .route("/api/v1/audio/summary", get(audio_summary))
         .with_state(state)
 }
@@ -137,6 +163,68 @@ async fn send_message(
     ))
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+enum CallCommandRequest {
+    Answer,
+    Reject,
+    HangUp,
+    Dial { target: String },
+    SendDtmf { tone: String },
+}
+
+impl CallCommandRequest {
+    fn validate(self) -> Result<analogconnect_core::CallCommand, StatusCode> {
+        use analogconnect_core::{CallCommand, DialTarget, DtmfTone};
+        match self {
+            Self::Answer => Ok(CallCommand::Answer),
+            Self::Reject => Ok(CallCommand::Reject),
+            Self::HangUp => Ok(CallCommand::HangUp),
+            Self::Dial { target } => DialTarget::parse(&target)
+                .map(CallCommand::Dial)
+                .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY),
+            Self::SendDtmf { tone } => {
+                let mut characters = tone.chars();
+                let value = characters.next().ok_or(StatusCode::UNPROCESSABLE_ENTITY)?;
+                if characters.next().is_some() {
+                    return Err(StatusCode::UNPROCESSABLE_ENTITY);
+                }
+                DtmfTone::parse(value)
+                    .map(CallCommand::SendDtmf)
+                    .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct CallCommandResponse {
+    accepted: bool,
+}
+
+async fn execute_call_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, Json<CallCommandResponse>), StatusCode> {
+    authorize(&state, &headers)?;
+    if body.len() > 1024 {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    let request: CallCommandRequest =
+        serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let command = request.validate()?;
+    let backend = state.call_backend.clone();
+    tokio::task::spawn_blocking(move || backend.execute(&command))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(CallCommandResponse { accepted: true }),
+    ))
+}
+
 async fn audio_summary(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -175,6 +263,19 @@ mod tests {
         calls: AtomicUsize,
     }
 
+    struct MockCallBackend {
+        calls: AtomicUsize,
+    }
+
+    impl HfpCommandBackend for MockCallBackend {
+        type Error = WirePlumberBackendError;
+
+        fn execute(&self, _command: &analogconnect_core::CallCommand) -> Result<(), Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
     impl MapSendBackend for MockMessageSender {
         fn send(
             &self,
@@ -199,10 +300,13 @@ mod tests {
     }
 
     fn test_state() -> AppState {
-        AppState::with_message_sender(
+        AppState::with_backends(
             SystemStatus::default(),
             AuthToken::new(test_token_text()).unwrap(),
             Arc::new(MockMessageSender {
+                calls: AtomicUsize::new(0),
+            }),
+            Arc::new(MockCallBackend {
                 calls: AtomicUsize::new(0),
             }),
         )
@@ -343,6 +447,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn call_command_returns_only_aggregate_acceptance() {
+        let response = app(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/calls/commands")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .body(Body::from(r#"{"action":"hang_up"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json, serde_json::json!({ "accepted": true }));
+    }
+
+    #[tokio::test]
+    async fn invalid_dial_target_is_not_echoed() {
+        let marker = "private-invalid-target";
+        let response = app(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/calls/commands")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .body(Body::from(format!(
+                        r#"{{"action":"dial","target":"{marker}"}}"#
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        assert!(!String::from_utf8_lossy(&body).contains(marker));
+    }
+
+    #[tokio::test]
     async fn audio_summary_contains_no_samples() {
         let response = app(test_state())
             .oneshot(authorized_request("/api/v1/audio/summary"))
@@ -363,6 +507,7 @@ mod tests {
             ("GET", "/api/v1/contacts/summary"),
             ("GET", "/api/v1/messages/summary"),
             ("POST", "/api/v1/messages"),
+            ("POST", "/api/v1/calls/commands"),
             ("GET", "/api/v1/audio/summary"),
         ] {
             let response = app(test_state())
