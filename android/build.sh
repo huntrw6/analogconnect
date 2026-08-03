@@ -41,13 +41,15 @@ javac -d "$test_classes_dir" \
     "$script_dir/src/com/analogconnect/client/CertificatePin.java" \
     "$script_dir/src/com/analogconnect/client/DiscoveryTarget.java" \
     "$script_dir/src/com/analogconnect/client/MediaSessionCredentials.java" \
+    "$script_dir/src/com/analogconnect/client/WebSocketWire.java" \
     "$script_dir/test/com/analogconnect/client/EndpointTest.java" \
     "$script_dir/test/com/analogconnect/client/AudioPacketCodecTest.java" \
     "$script_dir/test/com/analogconnect/client/AudioJitterBufferTest.java" \
     "$script_dir/test/com/analogconnect/client/CertificatePinTest.java" \
     "$script_dir/test/com/analogconnect/client/DiscoveryTargetTest.java" \
     "$script_dir/test/com/analogconnect/client/AudioDeviceConfigTest.java" \
-    "$script_dir/test/com/analogconnect/client/MediaSessionCredentialsTest.java"
+    "$script_dir/test/com/analogconnect/client/MediaSessionCredentialsTest.java" \
+    "$script_dir/test/com/analogconnect/client/WebSocketWireTest.java"
 java -cp "$test_classes_dir" com.analogconnect.client.EndpointTest
 java -cp "$test_classes_dir" com.analogconnect.client.AudioPacketCodecTest
 java -cp "$test_classes_dir" com.analogconnect.client.AudioJitterBufferTest
@@ -55,6 +57,7 @@ java -cp "$test_classes_dir" com.analogconnect.client.CertificatePinTest
 java -cp "$test_classes_dir" com.analogconnect.client.DiscoveryTargetTest
 java -cp "$test_classes_dir" com.analogconnect.client.AudioDeviceConfigTest
 java -cp "$test_classes_dir" com.analogconnect.client.MediaSessionCredentialsTest
+java -cp "$test_classes_dir" com.analogconnect.client.WebSocketWireTest
 
 aapt package -f -m -J "$generated_dir" -M "$script_dir/AndroidManifest.xml" \
     -S "$script_dir/res" -I "$platform_jar"

@@ -73,7 +73,15 @@ enter the bridge's bounded uplink queue. At each 7.5 ms media tick, one queued
 downlink frame is encoded and sent to Android. Both directions feed the existing
 privacy-safe aggregate queue counters. Attaching these queues to the live PipeWire
 workers remains the next Pi integration slice; implementing the Android WebSocket
-loop remains the corresponding client slice.
+audio-device loop remains the corresponding client slice.
+
+The Android API-27 client now has a dependency-free `MediaWebSocket` transport. It
+connects to the resolved daemon address while verifying the stable mDNS TLS name
+and exact enrolled certificate pin, forces TLS 1.2 for Android 8.1, validates the
+RFC 6455 upgrade response, rejects negotiated extensions, masks every client
+frame, and accepts only final, unmasked, bounded binary/control server frames.
+Credentials exist only in the transient upgrade request and are redacted from
+diagnostics. The transport automatically answers ping and closes idempotently.
 
 ## Synthetic benchmark
 
@@ -185,6 +193,13 @@ and approval are still required before running it on hardware.
   sequence, samples, and monotonic capture time through network encoding.
 - `DOCUMENTED`: the endpoint configures 512-byte WebSocket frame/message limits
   and closes on malformed ACAP, text, or unexpected messages without logging data.
+- `VERIFIED_AUTOMATED`: the dependency-free Android WebSocket wire layer validates
+  the RFC 6455 accept value and required headers, refuses extensions and malformed
+  upgrades, masks client frames, accepts bounded server binary frames, and rejects
+  masked, fragmented, oversized, or unexpected server frames on the API-27 build.
+- `DOCUMENTED`: `MediaWebSocket` applies the existing exact certificate pin and
+  stable TLS server-name verification to its TLS 1.2 socket before sending the
+  one-time session credentials.
 - `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16
   kHz mono 7.5 ms frames, uses voice-communication capture/playback, restores prior
   routing on stop, conditionally enables platform echo/noise processing, cleans up
