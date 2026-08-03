@@ -151,6 +151,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: strict versioned PCM packets round-trip, malformed packets
   fail closed, and the jitter buffer accounts for missing, late, duplicate, and
   overflow frames while bounding future latency.
+- `VERIFIED_AUTOMATED`: Rust and Android API-27 packet codecs match a shared golden
+  header vector without including sample values in diagnostics.
 - `UNKNOWN`: PipeWire node binding, codec conversion, network transport latency,
   and intelligibility with real call audio.
 

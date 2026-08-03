@@ -35,8 +35,11 @@ mkdir -p -- "$generated_dir" "$classes_dir" "$dex_dir" "$test_classes_dir"
 
 javac -d "$test_classes_dir" \
     "$script_dir/src/com/analogconnect/client/Endpoint.java" \
-    "$script_dir/test/com/analogconnect/client/EndpointTest.java"
+    "$script_dir/src/com/analogconnect/client/AudioPacketCodec.java" \
+    "$script_dir/test/com/analogconnect/client/EndpointTest.java" \
+    "$script_dir/test/com/analogconnect/client/AudioPacketCodecTest.java"
 java -cp "$test_classes_dir" com.analogconnect.client.EndpointTest
+java -cp "$test_classes_dir" com.analogconnect.client.AudioPacketCodecTest
 
 aapt package -f -m -J "$generated_dir" -M "$script_dir/AndroidManifest.xml" \
     -S "$script_dir/res" -I "$platform_jar"

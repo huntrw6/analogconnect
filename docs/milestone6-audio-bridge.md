@@ -58,5 +58,7 @@ throughput, real-time multiple, and drop count.
   aggregate API tests pass.
 - `VERIFIED_AUTOMATED`: binary round-trip, malformed-packet rejection, pre-playout
   reordering, missing/late/duplicate accounting, and bounded future latency pass.
+- `VERIFIED_AUTOMATED`: dependency-free Rust and Android API-27 codecs match the
+  same cross-platform golden header vector and both reject malformed input.
 - `UNKNOWN`: live PipeWire capture/playback, codec conversion, Android transport,
   end-to-end latency, and human-confirmed intelligibility.

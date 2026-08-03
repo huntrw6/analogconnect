@@ -40,4 +40,6 @@ ten-minute latency growth on the actual Android phone.
   binary codec for HFP narrowband/wideband frames and rejects malformed packets.
 - `VERIFIED_AUTOMATED`: a bounded jitter buffer handles pre-playout reordering and
   aggregate loss, late, duplicate, and overflow accounting without logging samples.
+- `VERIFIED_AUTOMATED`: the Rust and Android API-27 implementations share a golden
+  wire-header vector, proving byte-order and field-layout interoperability.
 - `UNKNOWN`: live transport benchmarks and the final RTP/Opus versus WebRTC choice.

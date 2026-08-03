@@ -239,4 +239,24 @@ mod tests {
             Err(AudioPacketError::InvalidPayload)
         );
     }
+
+    #[test]
+    fn packet_header_matches_cross_platform_golden_vector() {
+        let frame = AudioFrame::new(
+            0x0102_0304_0506_0708,
+            AudioFormat::HFP_NARROWBAND,
+            vec![0; usize::from(AudioFormat::HFP_NARROWBAND.samples_per_channel)],
+        )
+        .unwrap();
+        let encoded = AudioPacket::new(0x1112_1314_1516_1718, frame)
+            .encode()
+            .unwrap();
+        assert_eq!(
+            &encoded[..24],
+            &[
+                0x41, 0x43, 0x41, 0x50, 0x01, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+                0x07, 0x08, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+            ]
+        );
+    }
 }
