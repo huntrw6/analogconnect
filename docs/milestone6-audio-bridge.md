@@ -109,7 +109,8 @@ owners so capture and playback workers do not share a lock or audio buffer.
   format changes, and expose no sample values in errors.
 - `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16
   kHz mono 7.5 ms frames, uses voice-communication capture/playback, restores prior
-  routing on stop, and conditionally enables platform echo/noise processing.
+  routing on stop, conditionally enables platform echo/noise processing, cleans up
+  partial starts, and makes stop/close idempotent with fixed redacted failures.
 - `UNKNOWN`: real-phone microphone permission, device initialization, earpiece
   routing, echo/noise processing effectiveness, and sustained frame I/O.
 - `UNKNOWN`: real-call `pw-cat` process operation, codec conversion, Android

@@ -19,7 +19,8 @@ final class AndroidAudioDevice implements AutoCloseable {
     private final NoiseSuppressor noiseSuppressor;
     private int previousMode;
     private boolean previousSpeakerphone;
-    private boolean started;
+    private volatile boolean started;
+    private volatile boolean closed;
 
     AndroidAudioDevice(Context context, int wireFormat) {
         config = AudioDeviceConfig.forWireFormat(wireFormat);
@@ -43,54 +44,76 @@ final class AndroidAudioDevice implements AutoCloseable {
                 .setSampleRate(config.sampleRate)
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .build();
-        recorder = new AudioRecord.Builder()
-                .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-                .setAudioFormat(inputFormat)
-                .setBufferSizeInBytes(inputBuffer)
-                .build();
-        player = new AudioTrack.Builder()
-                .setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build())
-                .setAudioFormat(outputFormat)
-                .setBufferSizeInBytes(outputBuffer)
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .build();
-        if (recorder.getState() != AudioRecord.STATE_INITIALIZED
-                || player.getState() != AudioTrack.STATE_INITIALIZED) {
-            recorder.release();
-            player.release();
+        AudioRecord createdRecorder = null;
+        AudioTrack createdPlayer = null;
+        AcousticEchoCanceler createdEchoCanceler = null;
+        NoiseSuppressor createdNoiseSuppressor = null;
+        try {
+            createdRecorder = new AudioRecord.Builder()
+                    .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+                    .setAudioFormat(inputFormat)
+                    .setBufferSizeInBytes(inputBuffer)
+                    .build();
+            createdPlayer = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build())
+                    .setAudioFormat(outputFormat)
+                    .setBufferSizeInBytes(outputBuffer)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build();
+            if (createdRecorder.getState() != AudioRecord.STATE_INITIALIZED
+                    || createdPlayer.getState() != AudioTrack.STATE_INITIALIZED) {
+                throw new IllegalStateException("Call audio device initialization failed");
+            }
+            createdEchoCanceler = AcousticEchoCanceler.isAvailable()
+                    ? AcousticEchoCanceler.create(createdRecorder.getAudioSessionId()) : null;
+            createdNoiseSuppressor = NoiseSuppressor.isAvailable()
+                    ? NoiseSuppressor.create(createdRecorder.getAudioSessionId()) : null;
+            if (createdEchoCanceler != null) {
+                createdEchoCanceler.setEnabled(true);
+            }
+            if (createdNoiseSuppressor != null) {
+                createdNoiseSuppressor.setEnabled(true);
+            }
+        } catch (RuntimeException error) {
+            releaseSafely(createdEchoCanceler, createdNoiseSuppressor,
+                    createdRecorder, createdPlayer);
             throw new IllegalStateException("Call audio device initialization failed");
         }
-        echoCanceler = AcousticEchoCanceler.isAvailable()
-                ? AcousticEchoCanceler.create(recorder.getAudioSessionId()) : null;
-        noiseSuppressor = NoiseSuppressor.isAvailable()
-                ? NoiseSuppressor.create(recorder.getAudioSessionId()) : null;
-        if (echoCanceler != null) {
-            echoCanceler.setEnabled(true);
-        }
-        if (noiseSuppressor != null) {
-            noiseSuppressor.setEnabled(true);
-        }
+        recorder = createdRecorder;
+        player = createdPlayer;
+        echoCanceler = createdEchoCanceler;
+        noiseSuppressor = createdNoiseSuppressor;
     }
 
-    void start() {
+    synchronized void start() {
+        if (closed) {
+            throw new IllegalStateException("Call audio device is closed");
+        }
         if (started) {
             return;
         }
         previousMode = audioManager.getMode();
         previousSpeakerphone = audioManager.isSpeakerphoneOn();
-        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-        audioManager.setSpeakerphoneOn(false);
-        player.play();
-        recorder.startRecording();
-        if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
-            player.stop();
-            restoreRouting();
-            throw new IllegalStateException("Call microphone did not start");
+        try {
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            audioManager.setSpeakerphoneOn(false);
+            player.play();
+            if (player.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
+                throw new IllegalStateException("Call speaker did not start");
+            }
+            recorder.startRecording();
+            if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                throw new IllegalStateException("Call microphone did not start");
+            }
+            started = true;
+        } catch (RuntimeException error) {
+            stopHardwareSafely();
+            restoreRoutingSafely();
+            throw new IllegalStateException("Call audio device did not start");
         }
-        started = true;
     }
 
     AudioPacketCodec.Decoded readUplink(long sequence) {
@@ -116,15 +139,13 @@ final class AndroidAudioDevice implements AutoCloseable {
         }
     }
 
-    void stop() {
+    synchronized void stop() {
         if (!started) {
             return;
         }
-        recorder.stop();
-        player.pause();
-        player.flush();
-        restoreRouting();
         started = false;
+        stopHardwareSafely();
+        restoreRoutingSafely();
     }
 
     private void restoreRouting() {
@@ -132,22 +153,77 @@ final class AndroidAudioDevice implements AutoCloseable {
         audioManager.setMode(previousMode);
     }
 
+    private void restoreRoutingSafely() {
+        try {
+            restoreRouting();
+        } catch (RuntimeException ignored) {
+            // Never include vendor audio diagnostics in routine application output.
+        }
+    }
+
+    private void stopHardwareSafely() {
+        try {
+            if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                recorder.stop();
+            }
+        } catch (RuntimeException ignored) {
+            // Continue restoring the remaining resources.
+        }
+        try {
+            if (player.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                player.pause();
+            }
+            player.flush();
+        } catch (RuntimeException ignored) {
+            // Continue restoring routing even if the platform player is unhealthy.
+        }
+    }
+
     private void requireStarted() {
-        if (!started) {
+        if (!started || closed) {
             throw new IllegalStateException("Call audio device is not started");
         }
     }
 
+    private static void releaseSafely(AcousticEchoCanceler echo,
+            NoiseSuppressor noise, AudioRecord audioRecord, AudioTrack audioTrack) {
+        try {
+            if (echo != null) {
+                echo.release();
+            }
+        } catch (RuntimeException ignored) {
+            // Continue releasing all other partially constructed resources.
+        }
+        try {
+            if (noise != null) {
+                noise.release();
+            }
+        } catch (RuntimeException ignored) {
+            // Continue releasing all other partially constructed resources.
+        }
+        try {
+            if (audioRecord != null) {
+                audioRecord.release();
+            }
+        } catch (RuntimeException ignored) {
+            // Continue releasing the player.
+        }
+        try {
+            if (audioTrack != null) {
+                audioTrack.release();
+            }
+        } catch (RuntimeException ignored) {
+            // Construction is already failing; no diagnostic payload is retained.
+        }
+    }
+
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (closed) {
+            return;
+        }
         stop();
-        if (echoCanceler != null) {
-            echoCanceler.release();
-        }
-        if (noiseSuppressor != null) {
-            noiseSuppressor.release();
-        }
-        recorder.release();
-        player.release();
+        closed = true;
+        releaseSafely(echoCanceler, noiseSuppressor, recorder, player);
     }
 }

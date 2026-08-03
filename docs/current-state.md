@@ -168,7 +168,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
   can transfer the two directions to independent workers.
 - `VERIFIED_AUTOMATED`: an inactive-by-default Android audio-device adapter builds
   with voice-communication routing, exact HFP frame sizes, blocking PCM I/O, and
-  optional acoustic echo/noise processing.
+  optional acoustic echo/noise processing. Partial startup unwinds player,
+  recorder, and routing state; stop/close are idempotent and suppress vendor error
+  details.
 - `UNKNOWN`: Android microphone permission and real-device audio initialization,
   routing, frame timing, and intelligibility.
 - `UNKNOWN`: live-call PipeWire process operation, network transport latency, and
