@@ -51,6 +51,8 @@ ownership of the verified SLC.
 - `VERIFIED_AUTOMATED`: read-only snapshots aggregate live call objects into HFP
   and call status with deterministic multi-call precedence and no object paths or
   identity fields in the result.
+- `VERIFIED_AUTOMATED`: normal Telephony-service absence maps to disconnected/idle,
+  while malformed or ambiguous live state maps to a fail-closed error.
 - `VERIFIED_AUTOMATED`: WirePlumber helper calls time out after two seconds and a
   timeout or 1 MiB output-bound error contains neither arguments nor captured output.
 - `UNKNOWN`: command acceptance and behavior with the real iPhone.

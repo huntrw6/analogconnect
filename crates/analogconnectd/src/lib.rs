@@ -139,6 +139,10 @@ impl AppState {
                     status.hfp_control = snapshot.control;
                     status.call = snapshot.call;
                 }
+                Ok(Err(WirePlumberBackendError::Unavailable)) => {
+                    status.hfp_control = analogconnect_core::HfpControlState::Disconnected;
+                    status.call = analogconnect_core::CallState::Idle;
+                }
                 Ok(Err(_)) | Err(_) => {
                     status.hfp_control = analogconnect_core::HfpControlState::Error;
                     status.call = analogconnect_core::CallState::Error;
@@ -530,7 +534,12 @@ mod tests {
                 "slc_ready",
                 "active",
             ),
-            (Err(WirePlumberBackendError::Unavailable), "error", "error"),
+            (
+                Err(WirePlumberBackendError::Unavailable),
+                "disconnected",
+                "idle",
+            ),
+            (Err(WirePlumberBackendError::Ambiguous), "error", "error"),
         ] {
             let state = AppState::with_backends_and_observer(
                 SystemStatus::default(),

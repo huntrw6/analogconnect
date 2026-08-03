@@ -299,6 +299,9 @@ impl TelephonyPaths {
         gateways.dedup();
         calls.sort();
         calls.dedup();
+        if gateways.is_empty() {
+            return Err(WirePlumberBackendError::Unavailable);
+        }
         if gateways.len() != 1 {
             return Err(WirePlumberBackendError::Ambiguous);
         }
@@ -687,6 +690,11 @@ mod tests {
 
     #[test]
     fn wireplumber_backend_refuses_ambiguous_or_unsupported_control() {
+        let disconnected = dbus_backend("");
+        assert_eq!(
+            disconnected.execute(&CallCommand::HangUp),
+            Err(WirePlumberBackendError::Unavailable)
+        );
         let ambiguous =
             dbus_backend("├─ /org/pipewire/Telephony/ag0\n└─ /org/pipewire/Telephony/ag1\n");
         assert_eq!(
