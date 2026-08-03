@@ -14,7 +14,7 @@ final class AndroidCallAudioSession implements AutoCloseable {
     }
 
     static AndroidCallAudioSession connect(Context context, String endpoint, String pin,
-            String tlsName, MediaSessionCredentials credentials, int wireFormat)
+            String tlsName, MediaSessionCredentials credentials)
             throws IOException, GeneralSecurityException {
         if (credentials == null || credentials.isExpired(SystemClock.elapsedRealtime())) {
             throw new IOException("Media session credentials are missing or expired");
@@ -23,8 +23,9 @@ final class AndroidCallAudioSession implements AutoCloseable {
                 endpoint, pin, tlsName, credentials);
         AndroidAudioDevice audio = null;
         try {
-            audio = new AndroidAudioDevice(context, wireFormat);
-            return new AndroidCallAudioSession(new CallAudioPump(audio, transport, wireFormat));
+            audio = new AndroidAudioDevice(context, credentials.wireFormat());
+            return new AndroidCallAudioSession(
+                    new CallAudioPump(audio, transport, credentials.wireFormat()));
         } catch (RuntimeException error) {
             if (audio != null) {
                 audio.close();

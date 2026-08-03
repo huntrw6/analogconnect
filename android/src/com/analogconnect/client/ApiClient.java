@@ -102,8 +102,8 @@ final class ApiClient {
             }
             byte[] response = readBounded(connection.getInputStream(), 1024);
             JSONObject json = new JSONObject(new String(response, StandardCharsets.UTF_8));
-            if (json.length() != 3 || !json.has("session_id") || !json.has("token")
-                    || !json.has("lifetime_seconds")) {
+            if (json.length() != 4 || !json.has("session_id") || !json.has("token")
+                    || !json.has("lifetime_seconds") || !json.has("audio_format")) {
                 throw new IOException("Media session response is invalid");
             }
             Object lifetime = json.get("lifetime_seconds");
@@ -114,7 +114,8 @@ final class ApiClient {
                     json.getString("session_id"),
                     json.getString("token"),
                     ((Number) lifetime).longValue(),
-                    SystemClock.elapsedRealtime());
+                    SystemClock.elapsedRealtime(),
+                    json.getString("audio_format"));
         } catch (JSONException error) {
             throw new IOException("Media session response is invalid");
         } catch (MediaSessionCredentials.CredentialException error) {

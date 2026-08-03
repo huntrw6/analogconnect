@@ -5,10 +5,16 @@ final class MediaSessionCredentials {
 
     private final String sessionId;
     private final String token;
+    private final int wireFormat;
     private final long expiresAtMonotonicMillis;
 
     MediaSessionCredentials(String sessionId, String token, long lifetimeSeconds,
             long issuedAtMonotonicMillis) throws CredentialException {
+        this(sessionId, token, lifetimeSeconds, issuedAtMonotonicMillis, "hfp_wideband");
+    }
+
+    MediaSessionCredentials(String sessionId, String token, long lifetimeSeconds,
+            long issuedAtMonotonicMillis, String audioFormat) throws CredentialException {
         if (!isHex(sessionId, 32) || !isHex(token, 64)) {
             throw new CredentialException("media session credential is invalid");
         }
@@ -26,6 +32,13 @@ final class MediaSessionCredentials {
         }
         this.sessionId = sessionId;
         this.token = token;
+        if ("hfp_narrowband".equals(audioFormat)) {
+            wireFormat = AudioPacketCodec.FORMAT_NARROWBAND;
+        } else if ("hfp_wideband".equals(audioFormat)) {
+            wireFormat = AudioPacketCodec.FORMAT_WIDEBAND;
+        } else {
+            throw new CredentialException("media session audio format is invalid");
+        }
     }
 
     String sessionId() {
@@ -34,6 +47,10 @@ final class MediaSessionCredentials {
 
     String token() {
         return token;
+    }
+
+    int wireFormat() {
+        return wireFormat;
     }
 
     boolean isExpired(long monotonicMillis) {

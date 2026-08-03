@@ -99,8 +99,8 @@ impl MediaSessionGrant {
         })
     }
 
-    fn is_active(&self, now: Instant) -> bool {
-        now < self.expires_at && !self.revoked.load(Ordering::Acquire)
+    fn lease_is_active(&self) -> bool {
+        !self.revoked.load(Ordering::Acquire)
     }
 }
 
@@ -159,8 +159,8 @@ pub struct MediaSessionLease {
 
 impl MediaSessionLease {
     #[must_use]
-    pub fn is_active(&self, now: Instant) -> bool {
-        self.grant.is_active(now)
+    pub fn is_active(&self) -> bool {
+        self.grant.lease_is_active()
     }
 }
 
@@ -447,7 +447,7 @@ mod tests {
         let lease = registry
             .claim(enrollment.session_id(), enrollment.token(), Instant::now())
             .unwrap();
-        assert!(lease.is_active(Instant::now()));
+        assert!(lease.is_active());
         assert!(matches!(
             registry.claim(enrollment.session_id(), enrollment.token(), Instant::now()),
             Err(MediaSessionRegistryError::Unauthorized)
@@ -476,7 +476,7 @@ mod tests {
         let second = registry
             .issue(&mut random, Duration::from_secs(30))
             .unwrap();
-        assert!(!lease.is_active(Instant::now()));
+        assert!(!lease.is_active());
         assert!(matches!(
             registry.claim(first.session_id(), first.token(), Instant::now()),
             Err(MediaSessionRegistryError::Unauthorized)
@@ -485,8 +485,32 @@ mod tests {
             .claim(second.session_id(), second.token(), Instant::now())
             .unwrap();
         assert!(registry.revoke(second.session_id()).unwrap());
-        assert!(!second_lease.is_active(Instant::now()));
+        assert!(!second_lease.is_active());
         assert!(!registry.revoke(second.session_id()).unwrap());
+    }
+
+    #[test]
+    fn claimed_connection_survives_claim_deadline_but_cannot_reconnect_after_it() {
+        let registry = MediaSessionRegistry::new();
+        let mut random = FixtureRandom {
+            next: 4,
+            fails: false,
+        };
+        let issued_at = Instant::now();
+        let enrollment = registry.issue(&mut random, Duration::from_secs(1)).unwrap();
+        let lease = registry
+            .claim(enrollment.session_id(), enrollment.token(), issued_at)
+            .unwrap();
+        assert!(lease.is_active());
+        drop(lease);
+        assert!(matches!(
+            registry.claim(
+                enrollment.session_id(),
+                enrollment.token(),
+                issued_at + Duration::from_secs(2)
+            ),
+            Err(MediaSessionRegistryError::Unauthorized)
+        ));
     }
 
     #[test]

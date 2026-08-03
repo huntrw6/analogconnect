@@ -13,8 +13,8 @@ use std::{
 
 use analogconnect_core::SystemStatus;
 use audio::{
-    AudioBridge, AudioBridgeSummary, AudioStateBackend, PipeWireAudioStateBackend, PwDumpRunner,
-    ScoNodeError, ScoTeardownWatchdog,
+    AudioBridge, AudioBridgeSummary, AudioStateBackend, LiveAudioBridge, PipeWireAudioStateBackend,
+    PwDumpRunner, ScoNodeError, ScoNodeLocator, ScoTeardownWatchdog,
 };
 use auth::{AuthToken, AuthTokens, MutationLimiter};
 use axum::{
@@ -381,6 +381,7 @@ struct MediaSessionResponse {
     session_id: String,
     token: String,
     lifetime_seconds: u64,
+    audio_format: &'static str,
 }
 
 async fn create_audio_session(
@@ -406,6 +407,7 @@ async fn create_audio_session(
         session_id: enrollment.session_id().to_owned(),
         token: enrollment.token().to_owned(),
         lifetime_seconds: enrollment.lifetime_seconds(),
+        audio_format: "hfp_wideband",
     };
     tracing::info!(
         event = "media_session_issued",
@@ -458,11 +460,32 @@ async fn media_socket(
     lease: media_auth::MediaSessionLease,
     audio_bridge: Arc<AudioBridge>,
 ) {
+    let nodes = match ScoNodeLocator::new(PwDumpRunner::default()).locate() {
+        Ok(nodes) => nodes,
+        Err(_) => {
+            let mut socket = socket;
+            let _ = socket.send(Message::Close(None)).await;
+            return;
+        }
+    };
+    let _live_bridge = match LiveAudioBridge::start(
+        "pw-cat",
+        nodes,
+        analogconnect_core::AudioFormat::HFP_WIDEBAND,
+        Arc::clone(&audio_bridge),
+    ) {
+        Ok(bridge) => bridge,
+        Err(_) => {
+            let mut socket = socket;
+            let _ = socket.send(Message::Close(None)).await;
+            return;
+        }
+    };
     let (mut sender, mut receiver) = socket.split();
     let media_started = Instant::now();
     let mut playout = tokio::time::interval(Duration::from_micros(7_500));
     playout.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    while lease.is_active(Instant::now()) {
+    while lease.is_active() {
         tokio::select! {
             message = receiver.next() => match message {
                 Some(Ok(Message::Binary(packet))) if packet.len() <= MAX_MEDIA_PACKET_BYTES => {
@@ -483,6 +506,10 @@ async fn media_socket(
                 }
             },
             _ = playout.tick() => {
+                if _live_bridge.failure_code().is_some() {
+                    let _ = sender.send(Message::Close(None)).await;
+                    break;
+                }
                 match take_downlink_packet(&audio_bridge, media_started.elapsed()) {
                     Ok(Some(packet)) => {
                         if sender.send(Message::Binary(packet.into())).await.is_err() {
@@ -1069,10 +1096,11 @@ mod tests {
         assert_eq!(response.headers()["pragma"], "no-cache");
         let body = to_bytes(response.into_body(), 1024).await.unwrap();
         let json: Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json.as_object().unwrap().len(), 3);
+        assert_eq!(json.as_object().unwrap().len(), 4);
         assert_eq!(json["session_id"].as_str().unwrap().len(), 32);
         assert_eq!(json["token"].as_str().unwrap().len(), 64);
         assert_eq!(json["lifetime_seconds"], 60);
+        assert_eq!(json["audio_format"], "hfp_wideband");
         assert!(
             state
                 .media_sessions

@@ -3,9 +3,25 @@ package com.analogconnect.client;
 public final class MediaSessionCredentialsTest {
     public static void main(String[] args) throws Exception {
         acceptsMatchingServerShapeAndExpiresMonotonically();
+        acceptsOnlyExplicitHfpFormats();
         rejectsMalformedOrUnboundedValues();
         redactsDiagnostics();
-        System.out.println("ANDROID_MEDIA_AUTH_TESTS=PASS tests=3");
+        System.out.println("ANDROID_MEDIA_AUTH_TESTS=PASS tests=4");
+    }
+
+    private static void acceptsOnlyExplicitHfpFormats() throws Exception {
+        String id = repeat("01", 16);
+        String token = repeat("ab", 32);
+        MediaSessionCredentials narrow = new MediaSessionCredentials(
+                id, token, 30, 0, "hfp_narrowband");
+        assertEquals(AudioPacketCodec.FORMAT_NARROWBAND, narrow.wireFormat());
+        try {
+            new MediaSessionCredentials(id, token, 30, 0, "unknown");
+            throw new AssertionError("expected invalid media format");
+        } catch (MediaSessionCredentials.CredentialException expected) {
+            assertFalse(expected.getMessage().contains(id));
+            assertFalse(expected.getMessage().contains(token));
+        }
     }
 
     private static void acceptsMatchingServerShapeAndExpiresMonotonically() throws Exception {
@@ -58,6 +74,12 @@ public final class MediaSessionCredentialsTest {
 
     private static void assertEquals(String expected, String actual) {
         if (!expected.equals(actual)) {
+            throw new AssertionError("values differ");
+        }
+    }
+
+    private static void assertEquals(int expected, int actual) {
+        if (expected != actual) {
             throw new AssertionError("values differ");
         }
     }

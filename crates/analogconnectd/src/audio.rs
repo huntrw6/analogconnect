@@ -3,8 +3,12 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
-    sync::Mutex,
-    time::Instant,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU8, Ordering},
+    },
+    thread::{self, JoinHandle},
+    time::{Duration, Instant},
 };
 
 use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket, AudioTransportState, CallState};
@@ -529,6 +533,167 @@ impl PwCatFrameStreams {
     }
 }
 
+const LIVE_BRIDGE_OK: u8 = 0;
+const LIVE_BRIDGE_CAPTURE_FAILED: u8 = 1;
+const LIVE_BRIDGE_PLAYBACK_FAILED: u8 = 2;
+
+/// Owns `pw-cat`, its anonymous PCM pipes, and one worker per audio direction.
+/// Dropping it kills the child processes before joining workers so blocked pipe
+/// operations are released without persisting or logging any samples.
+pub struct LiveAudioBridge {
+    session: Option<PwCatSession>,
+    stop: Arc<AtomicBool>,
+    failure: Arc<AtomicU8>,
+    workers: Vec<JoinHandle<()>>,
+}
+
+impl LiveAudioBridge {
+    pub fn start(
+        executable: impl Into<PathBuf>,
+        nodes: ScoNodePair,
+        format: AudioFormat,
+        bridge: Arc<AudioBridge>,
+    ) -> Result<Self, LiveAudioBridgeError> {
+        let mut session =
+            PwCatSession::start(executable, nodes, format).map_err(LiveAudioBridgeError::Stream)?;
+        let streams = session
+            .take_frame_streams()
+            .map_err(LiveAudioBridgeError::Stream)?;
+        let (mut capture, mut playback) = streams.into_parts();
+        let stop = Arc::new(AtomicBool::new(false));
+        let failure = Arc::new(AtomicU8::new(LIVE_BRIDGE_OK));
+
+        let capture_stop = Arc::clone(&stop);
+        let capture_failure = Arc::clone(&failure);
+        let capture_bridge = Arc::clone(&bridge);
+        let capture_worker = thread::Builder::new()
+            .name("analogconnect-sco-capture".to_owned())
+            .spawn(move || {
+                while !capture_stop.load(Ordering::Acquire) {
+                    match capture_into_bridge(&mut capture, &capture_bridge) {
+                        Ok(true) => {}
+                        Ok(false) => break,
+                        _ => {
+                            capture_failure.store(LIVE_BRIDGE_CAPTURE_FAILED, Ordering::Release);
+                            break;
+                        }
+                    }
+                }
+            })
+            .map_err(|_| LiveAudioBridgeError::WorkerStartFailed)?;
+
+        let playback_stop = Arc::clone(&stop);
+        let playback_failure = Arc::clone(&failure);
+        let playback_worker = match thread::Builder::new()
+            .name("analogconnect-sco-playback".to_owned())
+            .spawn(move || {
+                let silence =
+                    AudioFrame::new(0, format, vec![0; usize::from(format.samples_per_channel)])
+                        .expect("fixed HFP silence frame is valid");
+                let frame_period = Duration::from_micros(format.frame_duration_micros());
+                let mut deadline = Instant::now();
+                while !playback_stop.load(Ordering::Acquire) {
+                    deadline += frame_period;
+                    if playback_from_bridge(&mut playback, &bridge, &silence).is_err() {
+                        playback_failure.store(LIVE_BRIDGE_PLAYBACK_FAILED, Ordering::Release);
+                        break;
+                    }
+                    if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+                        thread::sleep(remaining);
+                    } else {
+                        deadline = Instant::now();
+                    }
+                }
+            }) {
+            Ok(worker) => worker,
+            Err(_) => {
+                stop.store(true, Ordering::Release);
+                drop(session);
+                let _ = capture_worker.join();
+                return Err(LiveAudioBridgeError::WorkerStartFailed);
+            }
+        };
+
+        Ok(Self {
+            session: Some(session),
+            stop,
+            failure,
+            workers: vec![capture_worker, playback_worker],
+        })
+    }
+
+    #[must_use]
+    pub fn failure_code(&self) -> Option<&'static str> {
+        match self.failure.load(Ordering::Acquire) {
+            LIVE_BRIDGE_CAPTURE_FAILED => Some("sco_capture_failed"),
+            LIVE_BRIDGE_PLAYBACK_FAILED => Some("sco_playback_failed"),
+            _ => None,
+        }
+    }
+}
+
+fn capture_into_bridge<R: Read>(
+    capture: &mut PcmFrameReader<R>,
+    bridge: &AudioBridge,
+) -> Result<bool, LiveAudioBridgeError> {
+    match capture.read_frame().map_err(LiveAudioBridgeError::Pcm)? {
+        Some(frame) => {
+            bridge
+                .downlink
+                .push(frame)
+                .map_err(|_| LiveAudioBridgeError::QueueUnavailable)?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+fn playback_from_bridge<W: Write>(
+    playback: &mut PcmFrameWriter<W>,
+    bridge: &AudioBridge,
+    silence: &AudioFrame,
+) -> Result<(), LiveAudioBridgeError> {
+    let frame = bridge
+        .uplink
+        .pop()
+        .map_err(|_| LiveAudioBridgeError::QueueUnavailable)?
+        .unwrap_or_else(|| silence.clone());
+    playback
+        .write_frame(&frame)
+        .map_err(LiveAudioBridgeError::Pcm)
+}
+
+impl Drop for LiveAudioBridge {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        drop(self.session.take());
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
+    }
+}
+
+impl std::fmt::Debug for LiveAudioBridge {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LiveAudioBridge")
+            .field("failure_code", &self.failure_code())
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum LiveAudioBridgeError {
+    #[error(transparent)]
+    Stream(#[from] PwCatStreamError),
+    #[error("call-audio worker could not start")]
+    WorkerStartFailed,
+    #[error(transparent)]
+    Pcm(#[from] PcmStreamError),
+    #[error("call-audio queue is unavailable")]
+    QueueUnavailable,
+}
+
 /// Converts the raw little-endian PCM emitted by `pw-cat` into exact HFP frames.
 /// Audio bytes are never retained after the returned frame is constructed.
 pub struct PcmFrameReader<R> {
@@ -845,6 +1010,47 @@ mod tests {
         assert_eq!(summary.uplink.depth, 1);
         assert_eq!(summary.downlink.depth, 0);
         assert_eq!(summary.downlink.dequeued, 1);
+    }
+
+    #[test]
+    fn live_bridge_helpers_move_pcm_in_both_directions_and_fill_underflow() {
+        use std::io::Cursor;
+
+        let format = AudioFormat::HFP_NARROWBAND;
+        let source_frame = AudioFrame::new(
+            0,
+            format,
+            (0..format.samples_per_channel)
+                .map(|sample| i16::try_from(sample).unwrap())
+                .collect(),
+        )
+        .unwrap();
+        let mut source_bytes = Vec::new();
+        for sample in source_frame.samples() {
+            source_bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        let bridge = AudioBridge::new(2).unwrap();
+        let mut capture = PcmFrameReader::new(Cursor::new(source_bytes), format).unwrap();
+        assert!(capture_into_bridge(&mut capture, &bridge).unwrap());
+        assert_eq!(bridge.downlink.pop().unwrap(), Some(source_frame));
+        assert!(!capture_into_bridge(&mut capture, &bridge).unwrap());
+
+        let uplink = frame(44);
+        let wideband_bridge = AudioBridge::new(2).unwrap();
+        wideband_bridge.uplink.push(uplink.clone()).unwrap();
+        let silence = AudioFrame::new(
+            0,
+            AudioFormat::HFP_WIDEBAND,
+            vec![0; usize::from(AudioFormat::HFP_WIDEBAND.samples_per_channel)],
+        )
+        .unwrap();
+        let mut playback = PcmFrameWriter::new(Vec::new(), AudioFormat::HFP_WIDEBAND).unwrap();
+        playback_from_bridge(&mut playback, &wideband_bridge, &silence).unwrap();
+        playback_from_bridge(&mut playback, &wideband_bridge, &silence).unwrap();
+        let output = playback.into_inner();
+        let frame_bytes = usize::from(AudioFormat::HFP_WIDEBAND.samples_per_channel) * 2;
+        assert_eq!(output.len(), frame_bytes * 2);
+        assert!(output[frame_bytes..].iter().all(|byte| *byte == 0));
     }
 
     #[test]

@@ -62,9 +62,10 @@ carriage without changing PipeWire framing or playout policy.
 
 `GET /api/v1/audio/stream` upgrades to a WebSocket only when presented with the
 one-time media token in `Authorization: Bearer ...` and its session identifier in
-`X-AnalogConnect-Session`. A grant permits one concurrent connection, expires
-after 60 seconds, and becomes reusable only if that connection disconnects before
-expiry. The upgrade parser and application both cap messages at 512 bytes.
+`X-AnalogConnect-Session`. A grant permits one concurrent connection and has a
+60-second claim deadline. A connection claimed before that deadline remains valid
+for the call; reconnect is allowed only while the claim deadline remains valid.
+The upgrade parser and application both cap messages at 512 bytes.
 
 Client-to-Pi binary messages are strict ACAP uplink packets. Malformed, oversized,
 text, or unexpected messages close the connection. Ping/pong is supported. Packet
@@ -72,7 +73,16 @@ contents and credentials are neither logged nor persisted. Valid uplink packets
 enter the bridge's bounded uplink queue. At each 7.5 ms media tick, one queued
 downlink frame is encoded and sent to Android. Both directions feed the existing
 privacy-safe aggregate queue counters. Attaching these queues to the live PipeWire
-workers remains the next Pi integration slice.
+workers is now performed for the lifetime of each authenticated stream.
+
+After the WebSocket claim succeeds, the Pi re-resolves the unique SCO source/sink
+pair and starts one `pw-cat` process per direction at the explicitly negotiated
+`hfp_wideband` format. The capture worker frames PipeWire PCM into the downlink
+queue. The monotonic playback worker drains uplink every 7.5 ms and writes silence
+on underflow so PipeWire timing remains continuous. A worker failure closes the
+WebSocket with a fixed diagnostic boundary. Stream teardown first kills and reaps
+both child processes to unblock anonymous pipes, then joins both workers. No audio
+bytes or node identifiers are logged or persisted.
 
 The Android API-27 client now has a dependency-free `MediaWebSocket` transport. It
 connects to the resolved daemon address while verifying the stable mDNS TLS name
@@ -196,6 +206,9 @@ and approval are still required before running it on hardware.
 - `VERIFIED_AUTOMATED`: media-stream authorization enforces one concurrent claim,
   permits reuse after disconnect, and rejects requests that are not real WebSocket
   upgrades.
+- `VERIFIED_AUTOMATED`: a claimed connection remains active beyond its credential
+  claim deadline, while reconnect after that deadline is rejected; replacement or
+  explicit revocation still terminates the active lease.
 - `VERIFIED_AUTOMATED`: valid ACAP uplink packets enter the bounded uplink queue,
   malformed packets do not, and queued downlink frames retain their format,
   sequence, samples, and monotonic capture time through network encoding.
@@ -215,11 +228,16 @@ and approval are still required before running it on hardware.
 - `DOCUMENTED`: the API-27 build binds the tested pump to blocking Android
   voice-communication capture/playback and the pinned WebSocket transport with
   bounded worker shutdown and fixed failure codes.
+- `VERIFIED_AUTOMATED`: Pi worker adapters move capture PCM into downlink, drain
+  uplink into playback, insert exact-format silence on underflow, and retain no
+  samples in diagnostics using synthetic streams and queues.
+- `DOCUMENTED`: an authenticated server stream owns the real `pw-cat` processes
+  and both worker threads until disconnect, with process-first bounded teardown.
 - `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16
   kHz mono 7.5 ms frames, uses voice-communication capture/playback, restores prior
   routing on stop, conditionally enables platform echo/noise processing, cleans up
   partial starts, and makes stop/close idempotent with fixed redacted failures.
 - `UNKNOWN`: real-phone microphone permission, device initialization, earpiece
   routing, echo/noise processing effectiveness, and sustained frame I/O.
-- `UNKNOWN`: real-call `pw-cat` process operation, codec conversion, Android
-  transport, end-to-end latency, and human-confirmed intelligibility.
+- `UNKNOWN`: real-call integrated `pw-cat` process operation, Android WebSocket and
+  audio-device operation, end-to-end latency, and human-confirmed intelligibility.
