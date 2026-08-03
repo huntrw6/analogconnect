@@ -20,7 +20,10 @@ use auth::{AuthToken, AuthTokens, MutationLimiter};
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::State,
+    extract::{
+        State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
     http::{HeaderMap, HeaderValue, StatusCode, header},
     routing::get,
 };
@@ -225,6 +228,7 @@ pub fn app(state: AppState) -> Router {
             "/api/v1/audio/sessions",
             axum::routing::post(create_audio_session),
         )
+        .route("/api/v1/audio/stream", get(open_audio_stream))
         .with_state(state)
 }
 
@@ -405,6 +409,63 @@ async fn create_audio_session(
     response_headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response_headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
     Ok((StatusCode::CREATED, response_headers, Json(response)))
+}
+
+const MEDIA_SESSION_HEADER: &str = "x-analogconnect-session";
+const MAX_MEDIA_PACKET_BYTES: usize = 512;
+
+async fn open_audio_stream(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    upgrade: WebSocketUpgrade,
+) -> Result<axum::response::Response, StatusCode> {
+    let lease = claim_media_session(&state, &headers)?;
+    Ok(upgrade
+        .max_message_size(MAX_MEDIA_PACKET_BYTES)
+        .max_frame_size(MAX_MEDIA_PACKET_BYTES)
+        .on_upgrade(move |socket| media_socket(socket, lease)))
+}
+
+fn claim_media_session(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<media_auth::MediaSessionLease, StatusCode> {
+    let session_id = headers
+        .get(MEDIA_SESSION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    state
+        .media_sessions
+        .claim(session_id, token, Instant::now())
+        .map_err(|_| StatusCode::UNAUTHORIZED)
+}
+
+async fn media_socket(mut socket: WebSocket, lease: media_auth::MediaSessionLease) {
+    while lease.is_active(Instant::now()) {
+        match socket.recv().await {
+            Some(Ok(Message::Binary(packet))) if packet.len() <= MAX_MEDIA_PACKET_BYTES => {
+                if analogconnect_core::AudioPacket::decode(&packet).is_err() {
+                    let _ = socket.send(Message::Close(None)).await;
+                    break;
+                }
+            }
+            Some(Ok(Message::Ping(payload))) => {
+                if socket.send(Message::Pong(payload)).await.is_err() {
+                    break;
+                }
+            }
+            Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+            Some(Ok(_)) => {
+                let _ = socket.send(Message::Close(None)).await;
+                break;
+            }
+        }
+    }
 }
 
 fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
@@ -957,6 +1018,49 @@ mod tests {
                 )
                 .is_ok()
         );
+    }
+
+    #[tokio::test]
+    async fn media_stream_requires_a_real_upgrade_request() {
+        let response = app(test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/audio/stream")
+                    .header("connection", "upgrade")
+                    .header("upgrade", "websocket")
+                    .header("sec-websocket-version", "13")
+                    .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+    }
+
+    #[test]
+    fn media_stream_claims_one_time_session_credentials() {
+        let state = test_state();
+        let enrollment = state
+            .media_sessions
+            .issue(&mut OsRandomSource, Duration::from_secs(60))
+            .unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            MEDIA_SESSION_HEADER,
+            HeaderValue::from_str(enrollment.session_id()).unwrap(),
+        );
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", enrollment.token())).unwrap(),
+        );
+        let lease = claim_media_session(&state, &headers).unwrap();
+        assert_eq!(
+            claim_media_session(&state, &headers).unwrap_err(),
+            StatusCode::UNAUTHORIZED
+        );
+        drop(lease);
+        assert!(claim_media_session(&state, &headers).is_ok());
     }
 
     #[tokio::test]

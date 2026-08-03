@@ -58,6 +58,20 @@ buffer for ordered PipeWire playout. Its diagnostics contain only format and
 aggregate jitter counters. A future RTP or WebRTC adapter can replace packet
 carriage without changing PipeWire framing or playout policy.
 
+## Authenticated network boundary
+
+`GET /api/v1/audio/stream` upgrades to a WebSocket only when presented with the
+one-time media token in `Authorization: Bearer ...` and its session identifier in
+`X-AnalogConnect-Session`. A grant permits one concurrent connection, expires
+after 60 seconds, and becomes reusable only if that connection disconnects before
+expiry. The upgrade parser and application both cap messages at 512 bytes.
+
+Client-to-Pi binary messages are strict ACAP uplink packets. Malformed, oversized,
+text, or unexpected messages close the connection. Ping/pong is supported. Packet
+contents and credentials are neither logged nor persisted. The endpoint currently
+validates and accepts uplink frames; attaching its input and future downlink output
+to the live PipeWire workers remains the next integration slice.
+
 ## Synthetic benchmark
 
 ```bash
@@ -160,6 +174,11 @@ and approval are still required before running it on hardware.
 - `VERIFIED_AUTOMATED`: the transport-neutral framed bridge round-trips downlink
   packets, reorders uplink packets, rejects malformed or mid-session format
   changes, validates jitter configuration, and exposes no samples in diagnostics.
+- `VERIFIED_AUTOMATED`: media-stream authorization enforces one concurrent claim,
+  permits reuse after disconnect, and rejects requests that are not real WebSocket
+  upgrades.
+- `DOCUMENTED`: the endpoint configures 512-byte WebSocket frame/message limits
+  and closes on malformed ACAP, text, or unexpected messages without logging data.
 - `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16
   kHz mono 7.5 ms frames, uses voice-communication capture/playback, restores prior
   routing on stop, conditionally enables platform echo/noise processing, cleans up
