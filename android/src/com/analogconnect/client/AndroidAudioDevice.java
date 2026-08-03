@@ -10,7 +10,7 @@ import android.media.MediaRecorder;
 import android.media.audiofx.AcousticEchoCanceler;
 import android.media.audiofx.NoiseSuppressor;
 
-final class AndroidAudioDevice implements AutoCloseable {
+final class AndroidAudioDevice implements CallAudioPump.AudioIo {
     private final AudioDeviceConfig config;
     private final AudioManager audioManager;
     private final AudioRecord recorder;
@@ -88,7 +88,7 @@ final class AndroidAudioDevice implements AutoCloseable {
         noiseSuppressor = createdNoiseSuppressor;
     }
 
-    synchronized void start() {
+    public synchronized void start() {
         if (closed) {
             throw new IllegalStateException("Call audio device is closed");
         }
@@ -116,7 +116,7 @@ final class AndroidAudioDevice implements AutoCloseable {
         }
     }
 
-    AudioPacketCodec.Decoded readUplink(long sequence) {
+    public AudioPacketCodec.Decoded readUplink(long sequence) {
         requireStarted();
         short[] samples = new short[config.samplesPerFrame];
         int read = recorder.read(samples, 0, samples.length, AudioRecord.READ_BLOCKING);
@@ -127,7 +127,7 @@ final class AndroidAudioDevice implements AutoCloseable {
                 config.wireFormat, sequence, System.nanoTime() / 1_000, samples);
     }
 
-    void writeDownlink(AudioPacketCodec.Decoded packet) {
+    public void writeDownlink(AudioPacketCodec.Decoded packet) {
         requireStarted();
         if (packet.format != config.wireFormat || packet.samples.length != config.samplesPerFrame) {
             throw new IllegalArgumentException("Call audio frame format changed");
@@ -139,7 +139,7 @@ final class AndroidAudioDevice implements AutoCloseable {
         }
     }
 
-    synchronized void stop() {
+    public synchronized void stop() {
         if (!started) {
             return;
         }

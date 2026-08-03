@@ -16,13 +16,13 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
-final class MediaWebSocket implements AutoCloseable {
+final class MediaWebSocket implements CallAudioPump.Transport {
     private static final int TIMEOUT_MS = 5000;
     private final SSLSocket socket;
     private final InputStream input;
     private final OutputStream output;
     private final SecureRandom random;
-    private boolean closed;
+    private volatile boolean closed;
 
     private MediaWebSocket(SSLSocket socket, InputStream input, OutputStream output,
             SecureRandom random) {
@@ -86,7 +86,7 @@ final class MediaWebSocket implements AutoCloseable {
         }
     }
 
-    synchronized void sendBinary(byte[] packet) throws IOException {
+    public synchronized void sendBinary(byte[] packet) throws IOException {
         ensureOpen();
         WebSocketWire.writeClientFrame(output, WebSocketWire.OPCODE_BINARY, packet,
                 new WebSocketWire.MaskSource() {
@@ -112,6 +112,19 @@ final class MediaWebSocket implements AutoCloseable {
             close();
         }
         return frame;
+    }
+
+    @Override
+    public byte[] receiveBinary() throws IOException {
+        while (true) {
+            WebSocketWire.Frame frame = receive();
+            if (frame.opcode == WebSocketWire.OPCODE_BINARY) {
+                return frame.payload;
+            }
+            if (frame.opcode == WebSocketWire.OPCODE_CLOSE) {
+                throw new IOException("Media connection ended");
+            }
+        }
     }
 
     @Override

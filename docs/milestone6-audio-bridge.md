@@ -72,8 +72,7 @@ contents and credentials are neither logged nor persisted. Valid uplink packets
 enter the bridge's bounded uplink queue. At each 7.5 ms media tick, one queued
 downlink frame is encoded and sent to Android. Both directions feed the existing
 privacy-safe aggregate queue counters. Attaching these queues to the live PipeWire
-workers remains the next Pi integration slice; implementing the Android WebSocket
-audio-device loop remains the corresponding client slice.
+workers remains the next Pi integration slice.
 
 The Android API-27 client now has a dependency-free `MediaWebSocket` transport. It
 connects to the resolved daemon address while verifying the stable mDNS TLS name
@@ -82,6 +81,15 @@ RFC 6455 upgrade response, rejects negotiated extensions, masks every client
 frame, and accepts only final, unmasked, bounded binary/control server frames.
 Credentials exist only in the transient upgrade request and are redacted from
 diagnostics. The transport automatically answers ping and closes idempotently.
+
+`AndroidCallAudioSession` binds that transport to `AndroidAudioDevice` through a
+three-worker pump: blocking microphone capture sends monotonically sequenced ACAP
+uplink packets, network receive validates downlink packets into the synchronized
+jitter buffer, and a monotonic 7.5 ms playout worker feeds the earpiece. A format
+change, malformed packet, device failure, or transport failure stops all directions
+with one fixed error code. Shutdown closes the network first to unblock receive,
+stops audio to unblock capture, joins workers with a bound, restores routing, and
+is idempotent. Session construction refuses expired one-time credentials.
 
 ## Synthetic benchmark
 
@@ -200,6 +208,13 @@ and approval are still required before running it on hardware.
 - `DOCUMENTED`: `MediaWebSocket` applies the existing exact certificate pin and
   stable TLS server-name verification to its TLS 1.2 socket before sending the
   one-time session credentials.
+- `VERIFIED_AUTOMATED`: the Android audio pump preserves uplink format and sequence,
+  decodes and reorders downlink before playout, rejects mid-session format changes,
+  exposes only aggregate jitter health, and closes idempotently through fake audio
+  and network boundaries.
+- `DOCUMENTED`: the API-27 build binds the tested pump to blocking Android
+  voice-communication capture/playback and the pinned WebSocket transport with
+  bounded worker shutdown and fixed failure codes.
 - `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16
   kHz mono 7.5 ms frames, uses voice-communication capture/playback, restores prior
   routing on stop, conditionally enables platform echo/noise processing, cleans up

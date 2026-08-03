@@ -24,7 +24,7 @@ final class AudioJitterBuffer {
         this.targetDepth = targetDepth;
     }
 
-    void insert(AudioPacketCodec.Decoded packet) {
+    synchronized void insert(AudioPacketCodec.Decoded packet) {
         received++;
         long sequence = packet.sequence;
         if (nextSequence != null && sequence < nextSequence) {
@@ -47,7 +47,7 @@ final class AudioJitterBuffer {
     }
 
     // Call exactly once per negotiated 7.5 ms frame after playout begins.
-    AudioPacketCodec.Decoded tick() {
+    synchronized AudioPacketCodec.Decoded tick() {
         if (!started) {
             if (frames.size() < targetDepth) {
                 return null;
@@ -69,7 +69,7 @@ final class AudioJitterBuffer {
         return packet;
     }
 
-    Summary summary() {
+    synchronized Summary summary() {
         return new Summary(frames.size(), received, emitted, duplicate, late, missing, overflow);
     }
 
