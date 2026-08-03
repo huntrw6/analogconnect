@@ -220,6 +220,10 @@ and approval are still required before running it on hardware.
 - `VERIFIED_AUTOMATED`: valid ACAP uplink packets enter the bounded uplink queue,
   malformed packets do not, and queued downlink frames retain their format,
   sequence, samples, and monotonic capture time through network encoding.
+- `VERIFIED_AUTOMATED`: a real loopback HTTP/1.1 WebSocket upgrade accepts the
+  one-time media credential, refuses a concurrent duplicate claim, transfers a
+  binary ACAP uplink into the shared queue, and returns a queued binary downlink
+  through the same connection using a fake SCO process boundary.
 - `DOCUMENTED`: the endpoint configures 512-byte WebSocket frame/message limits
   and closes on malformed ACAP, text, or unexpected messages without logging data.
 - `VERIFIED_AUTOMATED`: the dependency-free Android WebSocket wire layer validates

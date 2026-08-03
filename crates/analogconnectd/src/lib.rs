@@ -53,6 +53,7 @@ pub struct AppState {
     sco_teardown_watchdog: Arc<std::sync::Mutex<ScoTeardownWatchdog>>,
     mutation_limiter: Arc<MutationLimiter>,
     media_sessions: Arc<MediaSessionRegistry>,
+    media_backend: Arc<dyn MediaBackend>,
     started_at: Instant,
 }
 
@@ -128,6 +129,7 @@ impl AppState {
             ))),
             mutation_limiter: Arc::new(MutationLimiter::new(10, Duration::from_secs(60))),
             media_sessions: Arc::new(MediaSessionRegistry::new()),
+            media_backend: Arc::new(PipeWireMediaBackend),
             started_at: Instant::now(),
         }
     }
@@ -423,6 +425,38 @@ async fn create_audio_session(
 const MEDIA_SESSION_HEADER: &str = "x-analogconnect-session";
 const MAX_MEDIA_PACKET_BYTES: usize = 512;
 
+trait ActiveMedia: Send {
+    fn failure_code(&self) -> Option<&'static str>;
+}
+
+trait MediaBackend: Send + Sync {
+    fn start(&self, bridge: Arc<AudioBridge>) -> Result<Box<dyn ActiveMedia>, ()>;
+}
+
+struct PipeWireMediaBackend;
+
+impl MediaBackend for PipeWireMediaBackend {
+    fn start(&self, bridge: Arc<AudioBridge>) -> Result<Box<dyn ActiveMedia>, ()> {
+        let nodes = ScoNodeLocator::new(PwDumpRunner::default())
+            .locate()
+            .map_err(|_| ())?;
+        LiveAudioBridge::start(
+            "pw-cat",
+            nodes,
+            analogconnect_core::AudioFormat::HFP_WIDEBAND,
+            bridge,
+        )
+        .map(|active| Box::new(active) as Box<dyn ActiveMedia>)
+        .map_err(|_| ())
+    }
+}
+
+impl ActiveMedia for LiveAudioBridge {
+    fn failure_code(&self) -> Option<&'static str> {
+        LiveAudioBridge::failure_code(self)
+    }
+}
+
 async fn open_audio_stream(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -430,10 +464,11 @@ async fn open_audio_stream(
 ) -> Result<axum::response::Response, StatusCode> {
     let lease = claim_media_session(&state, &headers)?;
     let audio_bridge = Arc::clone(&state.audio_bridge);
+    let media_backend = Arc::clone(&state.media_backend);
     Ok(upgrade
         .max_message_size(MAX_MEDIA_PACKET_BYTES)
         .max_frame_size(MAX_MEDIA_PACKET_BYTES)
-        .on_upgrade(move |socket| media_socket(socket, lease, audio_bridge)))
+        .on_upgrade(move |socket| media_socket(socket, lease, audio_bridge, media_backend)))
 }
 
 fn claim_media_session(
@@ -459,21 +494,9 @@ async fn media_socket(
     socket: WebSocket,
     lease: media_auth::MediaSessionLease,
     audio_bridge: Arc<AudioBridge>,
+    media_backend: Arc<dyn MediaBackend>,
 ) {
-    let nodes = match ScoNodeLocator::new(PwDumpRunner::default()).locate() {
-        Ok(nodes) => nodes,
-        Err(_) => {
-            let mut socket = socket;
-            let _ = socket.send(Message::Close(None)).await;
-            return;
-        }
-    };
-    let _live_bridge = match LiveAudioBridge::start(
-        "pw-cat",
-        nodes,
-        analogconnect_core::AudioFormat::HFP_WIDEBAND,
-        Arc::clone(&audio_bridge),
-    ) {
+    let live_bridge = match media_backend.start(Arc::clone(&audio_bridge)) {
         Ok(bridge) => bridge,
         Err(_) => {
             let mut socket = socket;
@@ -506,7 +529,7 @@ async fn media_socket(
                 }
             },
             _ = playout.tick() => {
-                if _live_bridge.failure_code().is_some() {
+                if live_bridge.failure_code().is_some() {
                     let _ = sender.send(Message::Close(None)).await;
                     break;
                 }
@@ -608,6 +631,22 @@ mod tests {
 
     struct MockAudioObserver {
         snapshot: Result<analogconnect_core::AudioTransportState, ScoNodeError>,
+    }
+
+    struct MockActiveMedia;
+
+    struct MockMediaBackend;
+
+    impl ActiveMedia for MockActiveMedia {
+        fn failure_code(&self) -> Option<&'static str> {
+            None
+        }
+    }
+
+    impl MediaBackend for MockMediaBackend {
+        fn start(&self, _bridge: Arc<AudioBridge>) -> Result<Box<dyn ActiveMedia>, ()> {
+            Ok(Box::new(MockActiveMedia))
+        }
     }
 
     impl HfpStateBackend for MockHfpObserver {
@@ -1192,6 +1231,94 @@ mod tests {
             bridge.summary().unwrap(),
             audio::AudioBridgeSummary::default()
         );
+    }
+
+    #[tokio::test]
+    async fn real_websocket_upgrade_moves_authenticated_packets_both_directions() {
+        use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket};
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        use tokio_tungstenite::tungstenite::{
+            Message as ClientMessage, http::HeaderValue as WsHeaderValue,
+        };
+
+        let mut state = test_state();
+        state.media_backend = Arc::new(MockMediaBackend);
+        let enrollment = state
+            .media_sessions
+            .issue(&mut OsRandomSource, Duration::from_secs(60))
+            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let router = app(state.clone());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await });
+
+        let url = format!("ws://{address}/api/v1/audio/stream");
+        let mut request = url.clone().into_client_request().unwrap();
+        request.headers_mut().insert(
+            MEDIA_SESSION_HEADER,
+            WsHeaderValue::from_str(enrollment.session_id()).unwrap(),
+        );
+        request.headers_mut().insert(
+            "authorization",
+            WsHeaderValue::from_str(&format!("Bearer {}", enrollment.token())).unwrap(),
+        );
+        let (mut socket, response) = tokio_tungstenite::connect_async(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
+
+        let mut duplicate_request = url.into_client_request().unwrap();
+        duplicate_request.headers_mut().insert(
+            MEDIA_SESSION_HEADER,
+            WsHeaderValue::from_str(enrollment.session_id()).unwrap(),
+        );
+        duplicate_request.headers_mut().insert(
+            "authorization",
+            WsHeaderValue::from_str(&format!("Bearer {}", enrollment.token())).unwrap(),
+        );
+        assert!(
+            tokio_tungstenite::connect_async(duplicate_request)
+                .await
+                .is_err()
+        );
+
+        let format = AudioFormat::HFP_WIDEBAND;
+        let uplink =
+            AudioFrame::new(5, format, vec![0; usize::from(format.samples_per_channel)]).unwrap();
+        socket
+            .send(ClientMessage::Binary(
+                AudioPacket::new(10_000, uplink.clone())
+                    .encode()
+                    .unwrap()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if state.audio_bridge.uplink.summary().unwrap().enqueued == 1 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(state.audio_bridge.uplink.pop().unwrap(), Some(uplink));
+
+        let downlink =
+            AudioFrame::new(6, format, vec![0; usize::from(format.samples_per_channel)]).unwrap();
+        state.audio_bridge.downlink.push(downlink.clone()).unwrap();
+        let received = tokio::time::timeout(Duration::from_secs(1), socket.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let ClientMessage::Binary(bytes) = received else {
+            panic!("expected binary downlink frame");
+        };
+        assert_eq!(AudioPacket::decode(&bytes).unwrap().frame(), &downlink);
+
+        socket.close(None).await.unwrap();
+        server.abort();
     }
 
     #[tokio::test]
