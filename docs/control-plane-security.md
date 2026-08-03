@@ -8,7 +8,8 @@
 - Equal-length token comparisons use a constant-time operation.
 - Tokens are redacted from `Debug` output and are never logged.
 - The daemon refuses to start when no token is configured.
-- The listener remains loopback-only by default.
+- The plaintext listener is restricted to loopback; non-loopback addresses fail startup.
+- Android accepts cleartext HTTP only for loopback and requires HTTPS elsewhere.
 
 ## Configuration
 
@@ -25,3 +26,13 @@ not be committed, copied into diagnostics, or placed in a shared command history
 - rate limiting and audit events that contain no private payloads
 
 The bearer foundation is not permission to expose the daemon on a LAN yet.
+
+## Enforced cleartext boundary
+
+- `VERIFIED_AUTOMATED`: every non-loopback `ANALOGCONNECT_LISTEN_ADDR` is rejected
+  while the daemon has no TLS listener.
+- `VERIFIED_AUTOMATED`: Android accepts `http://` only for `localhost`,
+  `127.0.0.1`, or `::1`; all other endpoint hosts must use `https://`.
+
+This makes the LAN restriction fail closed rather than relying only on operator
+discipline while certificate provisioning is still pending.

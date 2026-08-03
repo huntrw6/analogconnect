@@ -11,7 +11,11 @@ public final class EndpointTest {
         assertRejected("file:///tmp/socket");
         assertRejected("http://user:secret@pi.local");
         assertRejected("http:///missing-host");
-        System.out.println("ANDROID_UNIT_TESTS=PASS tests=5");
+        assertRejected("http://192.168.1.10:8787");
+        assertRejected("http://pi.local:8787");
+        assertEquals("http://localhost:8787/api/v1/health",
+                Endpoint.parse("http://localhost:8787", "/api/v1/health").toString());
+        System.out.println("ANDROID_UNIT_TESTS=PASS tests=8");
     }
 
     private static void assertRejected(String value) throws Exception {

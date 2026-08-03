@@ -25,6 +25,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listen_addr = env::var("ANALOGCONNECT_LISTEN_ADDR")
         .unwrap_or_else(|_| DEFAULT_LISTEN_ADDR.to_owned())
         .parse::<SocketAddr>()?;
+    validate_listen_addr(listen_addr)?;
     let listener = TcpListener::bind(listen_addr).await?;
 
     info!(
@@ -42,6 +43,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
 
     info!(event = "daemon_stopped", "analogconnectd stopped cleanly");
+    Ok(())
+}
+
+fn validate_listen_addr(listen_addr: SocketAddr) -> Result<(), &'static str> {
+    if !listen_addr.ip().is_loopback() {
+        return Err("plaintext listener must use a loopback address; non-loopback requires TLS");
+    }
     Ok(())
 }
 
@@ -78,5 +86,20 @@ async fn shutdown_signal() {
     tokio::select! {
         () = ctrl_c => {},
         () = terminate => {},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plaintext_listener_is_restricted_to_loopback() {
+        for address in ["127.0.0.1:8787", "[::1]:8787"] {
+            assert!(validate_listen_addr(address.parse().unwrap()).is_ok());
+        }
+        for address in ["0.0.0.0:8787", "192.168.1.10:8787", "[::]:8787"] {
+            assert!(validate_listen_addr(address.parse().unwrap()).is_err());
+        }
     }
 }
