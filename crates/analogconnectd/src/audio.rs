@@ -1,12 +1,12 @@
 use std::{
     collections::{BTreeMap, VecDeque},
     path::PathBuf,
-    process::{Command, Stdio},
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     sync::Mutex,
     time::Instant,
 };
 
-use analogconnect_core::AudioFrame;
+use analogconnect_core::{AudioFormat, AudioFrame};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -171,17 +171,17 @@ impl PipeWireDumpRunner for PwDumpRunner {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ScoNodePair {
     /// Captures iPhone audio from PipeWire for Android downlink.
-    pub source_id: u32,
+    pub source_serial: u32,
     /// Plays Android uplink into PipeWire toward the iPhone.
-    pub sink_id: u32,
+    pub sink_serial: u32,
 }
 
 impl std::fmt::Debug for ScoNodePair {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("ScoNodePair")
-            .field("source_id", &self.source_id)
-            .field("sink_id", &self.sink_id)
+            .field("source_serial", &self.source_serial)
+            .field("sink_serial", &self.sink_serial)
             .finish()
     }
 }
@@ -212,10 +212,9 @@ where
             {
                 continue;
             }
-            let Some(id) = object
-                .get("id")
-                .and_then(|value| value.as_u64())
-                .and_then(|value| u32::try_from(value).ok())
+            let Some(serial) = object
+                .pointer("/info/props/object.serial")
+                .and_then(parse_pipewire_serial)
             else {
                 continue;
             };
@@ -223,8 +222,8 @@ where
                 .pointer("/info/props/factory.name")
                 .and_then(|value| value.as_str())
             {
-                Some("api.bluez5.sco.source") => sources.push(id),
-                Some("api.bluez5.sco.sink") => sinks.push(id),
+                Some("api.bluez5.sco.source") => sources.push(serial),
+                Some("api.bluez5.sco.sink") => sinks.push(serial),
                 _ => {}
             }
         }
@@ -236,10 +235,17 @@ where
             return Err(ScoNodeError::Ambiguous);
         }
         Ok(ScoNodePair {
-            source_id: sources[0],
-            sink_id: sinks[0],
+            source_serial: sources[0],
+            sink_serial: sinks[0],
         })
     }
+}
+
+fn parse_pipewire_serial(value: &serde_json::Value) -> Option<u32> {
+    value
+        .as_str()
+        .and_then(|value| value.parse().ok())
+        .or_else(|| value.as_u64().and_then(|value| value.try_into().ok()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -250,6 +256,145 @@ pub enum ScoNodeError {
     InvalidSnapshot,
     #[error("PipeWire SCO node state is absent or ambiguous")]
     Ambiguous,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PwCatDirection {
+    Capture,
+    Playback,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PwCatCommand {
+    direction: PwCatDirection,
+    target_serial: u32,
+    sample_rate_hz: u32,
+}
+
+impl PwCatCommand {
+    fn new(
+        direction: PwCatDirection,
+        target_serial: u32,
+        format: AudioFormat,
+    ) -> Result<Self, PwCatStreamError> {
+        if !matches!(
+            format,
+            AudioFormat::HFP_NARROWBAND | AudioFormat::HFP_WIDEBAND
+        ) {
+            return Err(PwCatStreamError::UnsupportedFormat);
+        }
+        Ok(Self {
+            direction,
+            target_serial,
+            sample_rate_hz: format.sample_rate_hz,
+        })
+    }
+
+    fn arguments(&self) -> Vec<String> {
+        vec![
+            match self.direction {
+                PwCatDirection::Capture => "--record",
+                PwCatDirection::Playback => "--playback",
+            }
+            .to_owned(),
+            "--raw".to_owned(),
+            "--target".to_owned(),
+            self.target_serial.to_string(),
+            "--rate".to_owned(),
+            self.sample_rate_hz.to_string(),
+            "--channels".to_owned(),
+            "1".to_owned(),
+            "--format".to_owned(),
+            "s16".to_owned(),
+            "--latency".to_owned(),
+            "7.5ms".to_owned(),
+            "-".to_owned(),
+        ]
+    }
+}
+
+/// Owns the two live PipeWire processes for one call. PCM stays in anonymous
+/// pipes: callers must not persist or log bytes read from or written to them.
+pub struct PwCatSession {
+    capture: Child,
+    playback: Child,
+}
+
+impl PwCatSession {
+    pub fn start(
+        executable: impl Into<PathBuf>,
+        nodes: ScoNodePair,
+        format: AudioFormat,
+    ) -> Result<Self, PwCatStreamError> {
+        let executable = executable.into();
+        let capture_spec = PwCatCommand::new(PwCatDirection::Capture, nodes.source_serial, format)?;
+        let playback_spec = PwCatCommand::new(PwCatDirection::Playback, nodes.sink_serial, format)?;
+
+        let mut capture = spawn_pw_cat(&executable, &capture_spec)
+            .map_err(|_| PwCatStreamError::CaptureStartFailed)?;
+        let playback = match spawn_pw_cat(&executable, &playback_spec) {
+            Ok(child) => child,
+            Err(_) => {
+                stop_child(&mut capture);
+                return Err(PwCatStreamError::PlaybackStartFailed);
+            }
+        };
+        if capture.stdout.is_none() || playback.stdin.is_none() {
+            let mut playback = playback;
+            stop_child(&mut capture);
+            stop_child(&mut playback);
+            return Err(PwCatStreamError::PipeUnavailable);
+        }
+        Ok(Self { capture, playback })
+    }
+
+    pub fn capture_reader(&mut self) -> Result<&mut ChildStdout, PwCatStreamError> {
+        self.capture
+            .stdout
+            .as_mut()
+            .ok_or(PwCatStreamError::PipeUnavailable)
+    }
+
+    pub fn playback_writer(&mut self) -> Result<&mut ChildStdin, PwCatStreamError> {
+        self.playback
+            .stdin
+            .as_mut()
+            .ok_or(PwCatStreamError::PipeUnavailable)
+    }
+}
+
+impl Drop for PwCatSession {
+    fn drop(&mut self) {
+        stop_child(&mut self.capture);
+        stop_child(&mut self.playback);
+    }
+}
+
+fn spawn_pw_cat(executable: &PathBuf, spec: &PwCatCommand) -> std::io::Result<Child> {
+    let mut command = Command::new(executable);
+    command.args(spec.arguments()).stderr(Stdio::null());
+    match spec.direction {
+        PwCatDirection::Capture => command.stdin(Stdio::null()).stdout(Stdio::piped()),
+        PwCatDirection::Playback => command.stdin(Stdio::piped()).stdout(Stdio::null()),
+    };
+    command.spawn()
+}
+
+fn stop_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum PwCatStreamError {
+    #[error("audio format is unsupported")]
+    UnsupportedFormat,
+    #[error("PipeWire capture process could not start")]
+    CaptureStartFailed,
+    #[error("PipeWire playback process could not start")]
+    PlaybackStartFailed,
+    #[error("PipeWire audio pipe is unavailable")]
+    PipeUnavailable,
 }
 
 struct QueueState {
@@ -353,7 +498,6 @@ impl AudioBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use analogconnect_core::AudioFormat;
 
     fn frame(sequence: u64) -> AudioFrame {
         AudioFrame::new(
@@ -441,14 +585,16 @@ mod tests {
     }
 
     #[test]
-    fn sco_locator_uses_only_factory_and_numeric_ids() {
+    fn sco_locator_uses_only_factory_and_numeric_serials() {
         let private_marker = "PRIVATE-BLUETOOTH-MARKER";
         let dump = format!(
             r#"[
               {{"id":71,"type":"PipeWire:Interface:Node","info":{{"props":{{
+                "object.serial":"701",
                 "factory.name":"api.bluez5.sco.source",
                 "node.name":"{private_marker}"}}}}}},
               {{"id":72,"type":"PipeWire:Interface:Node","info":{{"props":{{
+                "object.serial":"702",
                 "factory.name":"api.bluez5.sco.sink",
                 "api.bluez5.address":"{private_marker}"}}}}}},
               {{"id":73,"type":"PipeWire:Interface:Node","info":{{"props":{{
@@ -458,8 +604,8 @@ mod tests {
         let nodes = ScoNodeLocator::new(FixtureDumpRunner { dump })
             .locate()
             .unwrap();
-        assert_eq!(nodes.source_id, 71);
-        assert_eq!(nodes.sink_id, 72);
+        assert_eq!(nodes.source_serial, 701);
+        assert_eq!(nodes.sink_serial, 702);
         assert!(!format!("{nodes:?}").contains(private_marker));
     }
 
@@ -468,9 +614,9 @@ mod tests {
         for dump in [
             "[]",
             r#"[
-              {"id":1,"type":"PipeWire:Interface:Node","info":{"props":{"factory.name":"api.bluez5.sco.source"}}},
-              {"id":2,"type":"PipeWire:Interface:Node","info":{"props":{"factory.name":"api.bluez5.sco.source"}}},
-              {"id":3,"type":"PipeWire:Interface:Node","info":{"props":{"factory.name":"api.bluez5.sco.sink"}}}
+              {"id":1,"type":"PipeWire:Interface:Node","info":{"props":{"object.serial":"11","factory.name":"api.bluez5.sco.source"}}},
+              {"id":2,"type":"PipeWire:Interface:Node","info":{"props":{"object.serial":"12","factory.name":"api.bluez5.sco.source"}}},
+              {"id":3,"type":"PipeWire:Interface:Node","info":{"props":{"object.serial":"13","factory.name":"api.bluez5.sco.sink"}}}
             ]"#,
         ] {
             assert_eq!(
@@ -488,5 +634,54 @@ mod tests {
             .locate(),
             Err(ScoNodeError::InvalidSnapshot)
         );
+    }
+
+    #[test]
+    fn pw_cat_commands_bind_correct_directions_and_pcm_formats() {
+        let nodes = ScoNodePair {
+            source_serial: 701,
+            sink_serial: 702,
+        };
+        for (format, rate) in [
+            (AudioFormat::HFP_NARROWBAND, "8000"),
+            (AudioFormat::HFP_WIDEBAND, "16000"),
+        ] {
+            let capture =
+                PwCatCommand::new(PwCatDirection::Capture, nodes.source_serial, format).unwrap();
+            let playback =
+                PwCatCommand::new(PwCatDirection::Playback, nodes.sink_serial, format).unwrap();
+            assert_eq!(
+                capture.arguments(),
+                [
+                    "--record",
+                    "--raw",
+                    "--target",
+                    "701",
+                    "--rate",
+                    rate,
+                    "--channels",
+                    "1",
+                    "--format",
+                    "s16",
+                    "--latency",
+                    "7.5ms",
+                    "-",
+                ]
+            );
+            assert_eq!(playback.arguments()[0], "--playback");
+            assert_eq!(playback.arguments()[3], "702");
+        }
+    }
+
+    #[test]
+    fn pw_cat_rejects_non_hfp_format_without_disclosing_paths() {
+        let unsupported = AudioFormat {
+            sample_rate_hz: 48_000,
+            channels: 2,
+            samples_per_channel: 360,
+        };
+        let error = PwCatCommand::new(PwCatDirection::Capture, 7, unsupported).unwrap_err();
+        assert_eq!(error, PwCatStreamError::UnsupportedFormat);
+        assert!(!format!("{error:?}").contains('/'));
     }
 }
