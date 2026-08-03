@@ -9,6 +9,7 @@ rust-version.workspace = true
 analogconnect-core = { path = "../analogconnect-core" }
 axum.workspace = true
 axum-server.workspace = true
+futures-util.workspace = true
 rusqlite.workspace = true
 rustls.workspace = true
 serde.workspace = true

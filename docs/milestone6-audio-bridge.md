@@ -2,9 +2,9 @@
 
 ## Scope
 
-This slice implements the in-memory portion of the bidirectional call-audio bridge
-and the process boundary that binds a live PipeWire SCO source/sink pair. It does
-not yet transfer frames over the Android network transport or record samples.
+This slice implements the in-memory portion of the bidirectional call-audio bridge,
+the process boundary that binds a live PipeWire SCO source/sink pair, and the Pi
+side of an authenticated WebSocket transport. It does not record samples.
 
 It also implements the versioned framed-PCM diagnostic wire format and a bounded
 sequence-aware jitter buffer required by ADR 0002. This is a benchmark baseline,
@@ -68,9 +68,12 @@ expiry. The upgrade parser and application both cap messages at 512 bytes.
 
 Client-to-Pi binary messages are strict ACAP uplink packets. Malformed, oversized,
 text, or unexpected messages close the connection. Ping/pong is supported. Packet
-contents and credentials are neither logged nor persisted. The endpoint currently
-validates and accepts uplink frames; attaching its input and future downlink output
-to the live PipeWire workers remains the next integration slice.
+contents and credentials are neither logged nor persisted. Valid uplink packets
+enter the bridge's bounded uplink queue. At each 7.5 ms media tick, one queued
+downlink frame is encoded and sent to Android. Both directions feed the existing
+privacy-safe aggregate queue counters. Attaching these queues to the live PipeWire
+workers remains the next Pi integration slice; implementing the Android WebSocket
+loop remains the corresponding client slice.
 
 ## Synthetic benchmark
 
@@ -177,6 +180,9 @@ and approval are still required before running it on hardware.
 - `VERIFIED_AUTOMATED`: media-stream authorization enforces one concurrent claim,
   permits reuse after disconnect, and rejects requests that are not real WebSocket
   upgrades.
+- `VERIFIED_AUTOMATED`: valid ACAP uplink packets enter the bounded uplink queue,
+  malformed packets do not, and queued downlink frames retain their format,
+  sequence, samples, and monotonic capture time through network encoding.
 - `DOCUMENTED`: the endpoint configures 512-byte WebSocket frame/message limits
   and closes on malformed ACAP, text, or unexpected messages without logging data.
 - `VERIFIED_AUTOMATED`: the Android API-27 audio-device adapter compiles for 8/16

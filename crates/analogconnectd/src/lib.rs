@@ -13,8 +13,8 @@ use std::{
 
 use analogconnect_core::SystemStatus;
 use audio::{
-    AudioBridgeSummary, AudioStateBackend, PipeWireAudioStateBackend, PwDumpRunner, ScoNodeError,
-    ScoTeardownWatchdog,
+    AudioBridge, AudioBridgeSummary, AudioStateBackend, PipeWireAudioStateBackend, PwDumpRunner,
+    ScoNodeError, ScoTeardownWatchdog,
 };
 use auth::{AuthToken, AuthTokens, MutationLimiter};
 use axum::{
@@ -28,6 +28,7 @@ use axum::{
     routing::get,
 };
 use contacts::ContactSummary;
+use futures_util::{SinkExt, StreamExt};
 use hfp::{
     BusctlRunner, HfpCommandBackend, HfpStateBackend, WirePlumberBackend, WirePlumberBackendError,
 };
@@ -43,7 +44,7 @@ pub struct AppState {
     status: Arc<RwLock<SystemStatus>>,
     contact_summary: Arc<RwLock<ContactSummary>>,
     message_summary: Arc<RwLock<MessageSyncSummary>>,
-    audio_summary: Arc<RwLock<AudioBridgeSummary>>,
+    audio_bridge: Arc<AudioBridge>,
     auth_tokens: Arc<AuthTokens>,
     message_sender: Arc<dyn MapSendBackend>,
     call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
@@ -114,7 +115,9 @@ impl AppState {
             status: Arc::new(RwLock::new(status)),
             contact_summary: Arc::new(RwLock::new(ContactSummary::default())),
             message_summary: Arc::new(RwLock::new(MessageSyncSummary::default())),
-            audio_summary: Arc::new(RwLock::new(AudioBridgeSummary::default())),
+            audio_bridge: Arc::new(
+                AudioBridge::new(8).expect("fixed audio queue capacity is valid"),
+            ),
             auth_tokens: Arc::new(auth_tokens),
             message_sender,
             call_backend,
@@ -366,7 +369,11 @@ async fn audio_summary(
     headers: HeaderMap,
 ) -> Result<Json<AudioBridgeSummary>, StatusCode> {
     authorize(&state, &headers)?;
-    Ok(Json(state.audio_summary.read().await.clone()))
+    state
+        .audio_bridge
+        .summary()
+        .map(Json)
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)
 }
 
 #[derive(Serialize)]
@@ -420,10 +427,11 @@ async fn open_audio_stream(
     upgrade: WebSocketUpgrade,
 ) -> Result<axum::response::Response, StatusCode> {
     let lease = claim_media_session(&state, &headers)?;
+    let audio_bridge = Arc::clone(&state.audio_bridge);
     Ok(upgrade
         .max_message_size(MAX_MEDIA_PACKET_BYTES)
         .max_frame_size(MAX_MEDIA_PACKET_BYTES)
-        .on_upgrade(move |socket| media_socket(socket, lease)))
+        .on_upgrade(move |socket| media_socket(socket, lease, audio_bridge)))
 }
 
 fn claim_media_session(
@@ -445,27 +453,84 @@ fn claim_media_session(
         .map_err(|_| StatusCode::UNAUTHORIZED)
 }
 
-async fn media_socket(mut socket: WebSocket, lease: media_auth::MediaSessionLease) {
+async fn media_socket(
+    socket: WebSocket,
+    lease: media_auth::MediaSessionLease,
+    audio_bridge: Arc<AudioBridge>,
+) {
+    let (mut sender, mut receiver) = socket.split();
+    let media_started = Instant::now();
+    let mut playout = tokio::time::interval(Duration::from_micros(7_500));
+    playout.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     while lease.is_active(Instant::now()) {
-        match socket.recv().await {
-            Some(Ok(Message::Binary(packet))) if packet.len() <= MAX_MEDIA_PACKET_BYTES => {
-                if analogconnect_core::AudioPacket::decode(&packet).is_err() {
-                    let _ = socket.send(Message::Close(None)).await;
+        tokio::select! {
+            message = receiver.next() => match message {
+                Some(Ok(Message::Binary(packet))) if packet.len() <= MAX_MEDIA_PACKET_BYTES => {
+                    if receive_uplink_packet(&audio_bridge, &packet).is_err() {
+                        let _ = sender.send(Message::Close(None)).await;
+                        break;
+                    }
+                }
+                Some(Ok(Message::Ping(payload))) => {
+                    if sender.send(Message::Pong(payload)).await.is_err() {
+                        break;
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                Some(Ok(_)) => {
+                    let _ = sender.send(Message::Close(None)).await;
                     break;
                 }
-            }
-            Some(Ok(Message::Ping(payload))) => {
-                if socket.send(Message::Pong(payload)).await.is_err() {
-                    break;
+            },
+            _ = playout.tick() => {
+                match take_downlink_packet(&audio_bridge, media_started.elapsed()) {
+                    Ok(Some(packet)) => {
+                        if sender.send(Message::Binary(packet.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(_) => {
+                        let _ = sender.send(Message::Close(None)).await;
+                        break;
+                    }
                 }
-            }
-            Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
-            Some(Ok(_)) => {
-                let _ = socket.send(Message::Close(None)).await;
-                break;
             }
         }
     }
+}
+
+fn receive_uplink_packet(bridge: &AudioBridge, bytes: &[u8]) -> Result<(), MediaStreamError> {
+    let packet = analogconnect_core::AudioPacket::decode(bytes)
+        .map_err(|_| MediaStreamError::InvalidPacket)?;
+    bridge
+        .uplink
+        .push(packet.frame().clone())
+        .map_err(|_| MediaStreamError::QueueUnavailable)
+}
+
+fn take_downlink_packet(
+    bridge: &AudioBridge,
+    capture_time: Duration,
+) -> Result<Option<Vec<u8>>, MediaStreamError> {
+    let Some(frame) = bridge
+        .downlink
+        .pop()
+        .map_err(|_| MediaStreamError::QueueUnavailable)?
+    else {
+        return Ok(None);
+    };
+    let capture_time_micros = u64::try_from(capture_time.as_micros()).unwrap_or(u64::MAX);
+    analogconnect_core::AudioPacket::new(capture_time_micros, frame)
+        .encode()
+        .map(Some)
+        .map_err(|_| MediaStreamError::InvalidPacket)
+}
+
+#[derive(Debug)]
+enum MediaStreamError {
+    InvalidPacket,
+    QueueUnavailable,
 }
 
 fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
@@ -1061,6 +1126,44 @@ mod tests {
         );
         drop(lease);
         assert!(claim_media_session(&state, &headers).is_ok());
+    }
+
+    #[test]
+    fn media_stream_moves_valid_packets_through_bounded_queues() {
+        use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket};
+
+        let bridge = AudioBridge::new(2).unwrap();
+        let format = AudioFormat::HFP_WIDEBAND;
+        let uplink =
+            AudioFrame::new(7, format, vec![0; usize::from(format.samples_per_channel)]).unwrap();
+        let uplink_bytes = AudioPacket::new(12_000, uplink.clone()).encode().unwrap();
+        receive_uplink_packet(&bridge, &uplink_bytes).unwrap();
+        assert_eq!(bridge.uplink.pop().unwrap(), Some(uplink));
+
+        let downlink =
+            AudioFrame::new(8, format, vec![0; usize::from(format.samples_per_channel)]).unwrap();
+        bridge.downlink.push(downlink.clone()).unwrap();
+        let encoded = take_downlink_packet(&bridge, Duration::from_micros(22_000))
+            .unwrap()
+            .unwrap();
+        let decoded = AudioPacket::decode(&encoded).unwrap();
+        assert_eq!(decoded.capture_time_micros(), 22_000);
+        assert_eq!(decoded.frame(), &downlink);
+        assert!(
+            take_downlink_packet(&bridge, Duration::from_micros(30_000))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn media_stream_rejects_malformed_uplink_without_queueing_it() {
+        let bridge = AudioBridge::new(2).unwrap();
+        assert!(receive_uplink_packet(&bridge, b"not an audio packet").is_err());
+        assert_eq!(
+            bridge.summary().unwrap(),
+            audio::AudioBridgeSummary::default()
+        );
     }
 
     #[tokio::test]
