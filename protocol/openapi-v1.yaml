@@ -101,6 +101,15 @@ paths:
       responses:
         "201":
           description: One-time transient media enrollment material; clients must not persist or log it.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                const: no-store
+            Pragma:
+              required: true
+              schema:
+                const: no-cache
           content:
             application/json:
               schema:

@@ -209,7 +209,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
   diagnostic output.
 - `VERIFIED_AUTOMATED`: an authenticated, mutation-limited media-session endpoint
   issues a one-minute registry credential only while call and SCO states are both
-  active; the OpenAPI contract fixes its three-field response.
+  active; the OpenAPI contract fixes its three-field response and mandatory
+  `no-store`/`no-cache` headers.
 - `VERIFIED_AUTOMATED`: Android compiles the matching bounded issuance request and
   validates the response into an in-memory-only monotonic credential object.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using

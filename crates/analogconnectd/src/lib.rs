@@ -17,7 +17,7 @@ use axum::{
     Json, Router,
     body::Bytes,
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     routing::get,
 };
 use contacts::ContactSummary;
@@ -264,7 +264,7 @@ struct MediaSessionResponse {
 async fn create_audio_session(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<(StatusCode, Json<MediaSessionResponse>), StatusCode> {
+) -> Result<(StatusCode, HeaderMap, Json<MediaSessionResponse>), StatusCode> {
     use analogconnect_core::{AudioTransportState, CallState};
 
     authorize(&state, &headers)?;
@@ -289,7 +289,10 @@ async fn create_audio_session(
         lifetime_seconds = response.lifetime_seconds,
         "media session issued"
     );
-    Ok((StatusCode::CREATED, Json(response)))
+    let mut response_headers = HeaderMap::new();
+    response_headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response_headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    Ok((StatusCode::CREATED, response_headers, Json(response)))
 }
 
 fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
@@ -638,6 +641,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        assert_eq!(response.headers()["pragma"], "no-cache");
         let body = to_bytes(response.into_body(), 1024).await.unwrap();
         let json: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json.as_object().unwrap().len(), 3);

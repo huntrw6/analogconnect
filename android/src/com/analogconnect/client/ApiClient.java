@@ -165,6 +165,8 @@ final class ApiClient {
 
     private HttpURLConnection open(URL url) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setUseCaches(false);
+        connection.setRequestProperty("Cache-Control", "no-store");
         if (connection instanceof HttpsURLConnection && certificatePin == null) {
             throw new IOException("HTTPS certificate pin is required");
         }

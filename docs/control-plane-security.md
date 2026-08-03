@@ -60,6 +60,8 @@ a one-minute enrollment only when the daemon state reports both an active call a
 active SCO, shares the authenticated mutation quota, and logs only a fixed event
 plus lifetime. The current plaintext server remains loopback-only, so this route
 does not authorize LAN exposure; it will move unchanged behind the TLS listener.
+Credential responses require `Cache-Control: no-store` and `Pragma: no-cache`;
+the Android HTTP client also disables URL caching and sends a no-store request.
 
 - `VERIFIED_AUTOMATED`: deterministic fixtures cover correct, malformed, and
   incorrect credentials; expiry, lifetime bounds, revocation, random-source
@@ -74,7 +76,8 @@ does not authorize LAN exposure; it will move unchanged behind the TLS listener.
   against a caller-supplied monotonic clock, and redacts diagnostics and errors.
 - `VERIFIED_AUTOMATED`: the issuance endpoint rejects inactive call/SCO state,
   requires bearer authentication, returns only the three contract fields, and
-  produces a credential that the server registry can claim.
+  produces a credential that the server registry can claim. Tests require both
+  anti-caching response headers.
 - `VERIFIED_AUTOMATED`: the API-27 client compiles a matching request path that
   requires HTTP 201, bounds the response to 1 KiB, rejects missing or extra fields,
   validates all values, and timestamps expiry with Android's monotonic clock. The
