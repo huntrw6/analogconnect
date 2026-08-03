@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+    info)
+        printf '  Paired: yes\n  UUID: Handsfree Audio Gateway (%s)\n' \
+            '0000111f-0000-1000-8000-00805f9b34fb'
+        ;;
+    disconnect)
+        [[ "${MOCK_DISCONNECT_EXIT:-0}" -eq 0 ]] && printf 'Successful disconnected\n'
+        exit "${MOCK_DISCONNECT_EXIT:-0}"
+        ;;
+    connect)
+        [[ "${MOCK_CONNECT_EXIT:-0}" -eq 0 ]] && printf 'Connection successful\n'
+        exit "${MOCK_CONNECT_EXIT:-0}"
+        ;;
+    *) exit 1 ;;
+esac

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$*" == *"GetManagedObjects"* ]]; then
+    printf '{"type":"a{oa{sa{sv}}}","data":[{"/org/pipewire/Telephony/ag1":{}}]}\n'
+elif [[ "$*" == *"GetCalls"* ]]; then
+    if [[ "${MOCK_ACTIVE_CALL:-0}" == 1 ]]; then
+        printf '{"type":"a{oa{sv}}","data":[{"/org/pipewire/Telephony/ag1/call1":{}}]}\n'
+    else
+        printf '{"type":"a{oa{sv}}","data":[{}]}\n'
+    fi
+elif [[ "$*" == *"AudioGatewayTransport1 State"* ]]; then
+    printf 's "%s"\n' "${MOCK_TRANSPORT_STATE:-active}"
+elif [[ "$*" == *"AudioGateway1 Address"* ]]; then
+    printf 's "02:00:%s"\n' '00:00:00:01'
+else
+    exit 1
+fi

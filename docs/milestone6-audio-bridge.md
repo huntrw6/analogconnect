@@ -134,6 +134,23 @@ owners so capture and playback workers do not share a lock or audio buffer.
   and an active gateway transport.
 - `FAILED`: SCO remained active after one Pi-originated hangup and required an
   HFP-profile cycle; automatic recovery for this condition remains pending.
+
+## Explicit stuck-SCO recovery
+
+`scripts/hfp-recover.sh --confirm` is an operator-invoked recovery boundary, not
+an automatic daemon action. It refuses to run unless WirePlumber exposes exactly
+one gateway, no call objects, an active gateway transport, and an already-paired
+device with the HFP Audio Gateway UUID. Every helper has a five-second bound. The
+address exists only in shell memory and is never printed. It cycles only UUID
+`0000111f-0000-1000-8000-00805f9b34fb`; a failed reconnect triggers one bounded
+best-effort reconnect before exit. Pairing is never created, removed, or changed.
+
+Because this intentionally interrupts Bluetooth audio, the project safety review
+and approval are still required before running it on hardware.
+
+- `VERIFIED_AUTOMATED`: mock helpers cover success, active-call refusal,
+  non-stuck refusal, reconnect failure, fixed diagnostics, and address redaction.
+- `UNKNOWN`: recovery behavior during a newly reproduced real stuck-SCO event.
 - `VERIFIED_AUTOMATED`: capture/playback command construction binds the correct
   source/sink direction for both HFP rates, fixes mono signed-16-bit framing and
   7.5 ms latency, and rejects non-HFP formats.
