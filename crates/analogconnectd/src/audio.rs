@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket, AudioTransportState};
+use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket, AudioTransportState, CallState};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -15,6 +15,54 @@ use crate::process::run_bounded;
 
 const HELPER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const MAX_HELPER_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+
+pub struct ScoTeardownWatchdog {
+    grace_period: std::time::Duration,
+    inconsistent_since: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScoTeardownObservation {
+    pub state: AudioTransportState,
+    pub stalled: bool,
+}
+
+impl ScoTeardownWatchdog {
+    #[must_use]
+    pub const fn new(grace_period: std::time::Duration) -> Self {
+        Self {
+            grace_period,
+            inconsistent_since: None,
+        }
+    }
+
+    pub fn observe(
+        &mut self,
+        call: CallState,
+        audio: AudioTransportState,
+        now: Instant,
+    ) -> ScoTeardownObservation {
+        if matches!(call, CallState::Idle | CallState::Ended)
+            && audio == AudioTransportState::ScoActive
+        {
+            let since = *self.inconsistent_since.get_or_insert(now);
+            let stalled = now.saturating_duration_since(since) >= self.grace_period;
+            return ScoTeardownObservation {
+                state: if stalled {
+                    AudioTransportState::Error
+                } else {
+                    AudioTransportState::ScoTearingDown
+                },
+                stalled,
+            };
+        }
+        self.inconsistent_since = None;
+        ScoTeardownObservation {
+            state: audio,
+            stalled: false,
+        }
+    }
+}
 
 struct QueuedFrame {
     frame: AudioFrame,
@@ -937,6 +985,38 @@ mod tests {
             dump: "private malformed snapshot".to_owned(),
         });
         assert_eq!(invalid.snapshot(), Err(ScoNodeError::InvalidSnapshot));
+    }
+
+    #[test]
+    fn sco_teardown_watchdog_is_monotonic_bounded_and_resets() {
+        let start = Instant::now();
+        let mut watchdog = ScoTeardownWatchdog::new(std::time::Duration::from_secs(10));
+
+        let tearing_down = watchdog.observe(CallState::Idle, AudioTransportState::ScoActive, start);
+        assert_eq!(tearing_down.state, AudioTransportState::ScoTearingDown);
+        assert!(!tearing_down.stalled);
+        let stalled = watchdog.observe(
+            CallState::Idle,
+            AudioTransportState::ScoActive,
+            start + std::time::Duration::from_secs(10),
+        );
+        assert_eq!(stalled.state, AudioTransportState::Error);
+        assert!(stalled.stalled);
+
+        let recovered = watchdog.observe(
+            CallState::Idle,
+            AudioTransportState::Inactive,
+            start + std::time::Duration::from_secs(11),
+        );
+        assert_eq!(recovered.state, AudioTransportState::Inactive);
+        assert!(!recovered.stalled);
+        let next_call = watchdog.observe(
+            CallState::Active,
+            AudioTransportState::ScoActive,
+            start + std::time::Duration::from_secs(12),
+        );
+        assert_eq!(next_call.state, AudioTransportState::ScoActive);
+        assert!(!next_call.stalled);
     }
 
     #[test]

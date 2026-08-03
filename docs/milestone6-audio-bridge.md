@@ -126,6 +126,10 @@ owners so capture and playback workers do not share a lock or audio buffer.
 - `VERIFIED_AUTOMATED`: runtime audio status requires both an exact SCO node pair
   and WirePlumber's live AudioGateway transport state, preventing stale nodes
   alone from authorizing call media.
+- `VERIFIED_AUTOMATED`: when call state is idle/ended while both SCO signals stay
+  active, a monotonic watchdog reports `sco_tearing_down` for a ten-second grace
+  period, then fails closed with the fixed `sco_teardown_stalled` diagnostic.
+  Normal teardown and a subsequent active call reset the watchdog.
 - `VERIFIED_HARDWARE`: active iPhone calls produced exactly one source/sink pair
   and an active gateway transport.
 - `FAILED`: SCO remained active after one Pi-originated hangup and required an

@@ -229,6 +229,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
   `State`, and PipeWire command methods. Private property values are discarded.
 - `VERIFIED_AUTOMATED`: audio is active only when both a unique SCO node pair and
   the gateway transport report active.
+- `VERIFIED_AUTOMATED`: an idle/ended call with persistent active SCO transitions
+  through a ten-second `sco_tearing_down` grace period, then fails closed with a
+  fixed redacted `sco_teardown_stalled` diagnostic and blocks media issuance.
 - `VERIFIED_AUTOMATED`: `busctl` and `pw-dump` snapshot helpers have a two-second
   wall-time bound and respective 1 MiB/16 MiB output bounds, drain stdout privately,
   discard stderr, and kill/reap stalled children with fixed payload-free errors.

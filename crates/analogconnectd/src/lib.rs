@@ -14,6 +14,7 @@ use std::{
 use analogconnect_core::SystemStatus;
 use audio::{
     AudioBridgeSummary, AudioStateBackend, PipeWireAudioStateBackend, PwDumpRunner, ScoNodeError,
+    ScoTeardownWatchdog,
 };
 use auth::{AuthToken, AuthTokens, MutationLimiter};
 use axum::{
@@ -45,6 +46,7 @@ pub struct AppState {
     call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
     hfp_state_backend: Option<Arc<dyn HfpStateBackend<Error = WirePlumberBackendError>>>,
     audio_state_backend: Option<Arc<dyn AudioStateBackend<Error = ScoNodeError>>>,
+    sco_teardown_watchdog: Arc<std::sync::Mutex<ScoTeardownWatchdog>>,
     mutation_limiter: Arc<MutationLimiter>,
     media_sessions: Arc<MediaSessionRegistry>,
     started_at: Instant,
@@ -115,6 +117,9 @@ impl AppState {
             call_backend,
             hfp_state_backend,
             audio_state_backend,
+            sco_teardown_watchdog: Arc::new(std::sync::Mutex::new(ScoTeardownWatchdog::new(
+                Duration::from_secs(10),
+            ))),
             mutation_limiter: Arc::new(MutationLimiter::new(10, Duration::from_secs(60))),
             media_sessions: Arc::new(MediaSessionRegistry::new()),
             started_at: Instant::now(),
@@ -174,6 +179,24 @@ impl AppState {
                     status.audio = analogconnect_core::AudioTransportState::Error;
                 }
             }
+        }
+        if let Ok(mut watchdog) = self.sco_teardown_watchdog.lock() {
+            let observation = watchdog.observe(status.call, status.audio, Instant::now());
+            status.audio = observation.state;
+            if observation.stalled {
+                status.last_error = Some(analogconnect_core::RedactedError::new(
+                    "sco_teardown_stalled",
+                    "call audio did not stop after the call ended",
+                ));
+            } else if status
+                .last_error
+                .as_ref()
+                .is_some_and(|error| error.code == "sco_teardown_stalled")
+            {
+                status.last_error = None;
+            }
+        } else {
+            status.audio = analogconnect_core::AudioTransportState::Error;
         }
     }
 }
@@ -656,6 +679,49 @@ mod tests {
         assert_eq!(json["hfp_control"], "slc_ready");
         assert_eq!(json["call"], "idle");
         assert_eq!(json["audio"], "inactive");
+    }
+
+    #[tokio::test]
+    async fn stalled_sco_teardown_fails_closed_with_fixed_diagnostic() {
+        use analogconnect_core::{AudioTransportState, CallState, HfpControlState};
+
+        let mut state = AppState::with_backends_and_observer(
+            SystemStatus::default(),
+            AuthTokens::new(AuthToken::new(test_token_text()).unwrap()),
+            Arc::new(MockMessageSender {
+                calls: AtomicUsize::new(0),
+            }),
+            Arc::new(MockCallBackend {
+                calls: AtomicUsize::new(0),
+            }),
+            Some(Arc::new(MockHfpObserver {
+                snapshot: Ok(hfp::HfpStatusSnapshot {
+                    control: HfpControlState::SlcReady,
+                    call: CallState::Idle,
+                    transport: AudioTransportState::ScoActive,
+                }),
+            })),
+            Some(Arc::new(MockAudioObserver {
+                snapshot: Ok(AudioTransportState::ScoActive),
+            })),
+        );
+        state.sco_teardown_watchdog = Arc::new(std::sync::Mutex::new(ScoTeardownWatchdog::new(
+            Duration::ZERO,
+        )));
+        let response = app(state)
+            .oneshot(authorized_request("/api/v1/status"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["call"], "idle");
+        assert_eq!(json["audio"], "error");
+        assert_eq!(json["last_error"]["code"], "sco_teardown_stalled");
+        assert_eq!(
+            json["last_error"]["summary"],
+            "call audio did not stop after the call ended"
+        );
     }
 
     #[tokio::test]
