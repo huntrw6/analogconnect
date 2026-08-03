@@ -67,7 +67,10 @@ from the mutable IP address.
 - `VERIFIED_AUTOMATED`: the API-27 Android build discovers `_analogconnect._tcp`,
   resolves the current address immediately before use, and keeps the resolved mDNS
   hostname as the separate TLS certificate identity.
-- `UNKNOWN`: Android NSD resolution and reconnect after a real DHCP address change.
+- `VERIFIED_HARDWARE`: the Android 8.1 phone resolved the Avahi service, retained
+  `operat.local` as the TLS identity, connected by the resolved IP, verified the
+  pinned certificate, and authenticated without modifying the saved token.
+- `UNKNOWN`: reconnect after a real DHCP address change.
 
 ## Staged token rotation
 

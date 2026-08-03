@@ -402,12 +402,20 @@ public final class MainActivity extends Activity {
         discovery.discover(new NsdDiscovery.Callback() {
             @Override public void onResolved(String value, String identity) {
                 runOnUiThread(new Runnable() {
-                    @Override public void run() { endpoint.setText(value); tlsName.setText(identity); result.setText("Daemon discovered; save enrollment"); }
+                    @Override public void run() {
+                        endpoint.setText(value);
+                        tlsName.setText(identity);
+                        getPreferences(MODE_PRIVATE).edit()
+                                .putString(ENDPOINT_KEY, value)
+                                .putString(TLS_NAME_KEY, identity)
+                                .apply();
+                        result.setText("Daemon discovered");
+                    }
                 });
             }
-            @Override public void onFailure() {
+            @Override public void onFailure(final String reason) {
                 runOnUiThread(new Runnable() {
-                    @Override public void run() { result.setText("Daemon discovery failed"); }
+                    @Override public void run() { result.setText("Daemon discovery failed: " + reason); }
                 });
             }
         });

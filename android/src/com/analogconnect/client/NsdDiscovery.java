@@ -4,13 +4,12 @@ import android.content.Context;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 
-import java.net.Inet6Address;
-import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 
 final class NsdDiscovery {
     interface Callback {
         void onResolved(String endpoint, String tlsName);
-        void onFailure();
+        void onFailure(String reason);
     }
 
     private static final String SERVICE_TYPE = "_analogconnect._tcp.";
@@ -27,19 +26,20 @@ final class NsdDiscovery {
             @Override public void onDiscoveryStarted(String type) {}
             @Override public void onDiscoveryStopped(String type) {}
             @Override public void onServiceLost(NsdServiceInfo service) {}
-            @Override public void onStartDiscoveryFailed(String type, int code) { stop(); callback.onFailure(); }
+            @Override public void onStartDiscoveryFailed(String type, int code) { stop(); callback.onFailure("start_failed"); }
             @Override public void onStopDiscoveryFailed(String type, int code) { listener = null; }
             @Override public void onServiceFound(NsdServiceInfo service) {
                 if (!service.getServiceType().equalsIgnoreCase(SERVICE_TYPE)) return;
                 stop();
                 manager.resolveService(service, new NsdManager.ResolveListener() {
-                    @Override public void onResolveFailed(NsdServiceInfo info, int code) { callback.onFailure(); }
+                    @Override public void onResolveFailed(NsdServiceInfo info, int code) { callback.onFailure("resolve_failed"); }
                     @Override public void onServiceResolved(NsdServiceInfo info) {
-                        InetAddress host = info.getHost();
-                        if (host == null || info.getPort() < 1 || info.getPort() > 65535) { callback.onFailure(); return; }
-                        String address = host.getHostAddress();
-                        if (host instanceof Inet6Address) address = "[" + address + "]";
-                        callback.onResolved("https://" + address + ":" + info.getPort(), host.getHostName());
+                        try {
+                            byte[] identity = info.getAttributes().get("tls-name");
+                            DiscoveryTarget target = DiscoveryTarget.from(info.getHost(), info.getPort(),
+                                    identity == null ? null : new String(identity, StandardCharsets.US_ASCII));
+                            callback.onResolved(target.endpoint, target.tlsName);
+                        } catch (IllegalArgumentException error) { callback.onFailure("identity_unavailable"); }
                     }
                 });
             }
