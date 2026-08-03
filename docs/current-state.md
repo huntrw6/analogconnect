@@ -11,6 +11,9 @@ interpretations are superseded.
   aggregate-only pipeline; persistence/search remain hardware-free validated.
 - Milestone 3 MAP synchronization orchestration is implemented around imsg's
   encrypted store and awaits notification behavior validation with the iPhone.
+- Milestone 4 outbound MAP request validation, authenticated API, redacted
+  transport adapter, and confirmation-based Android UI are software-complete;
+  no real message has been sent by this path.
 - Milestone 5 HFP call-control domain and AT encoding are implemented behind a
   mock transport; no live command has been sent to the iPhone.
 - Milestone 6 in-memory audio bridge queues and aggregate instrumentation are
@@ -97,6 +100,18 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_HARDWARE`: a bounded real-iPhone inbox listing passed through the
   aggregate-only validator with one row observed; no message metadata or content
   was emitted by the validator.
+
+### Outbound messaging software
+
+- `VERIFIED_AUTOMATED`: authenticated outbound requests are size-bounded and
+  parsed only after authentication.
+- `VERIFIED_AUTOMATED`: recipient/body validation, redacted diagnostics,
+  aggregate-only API responses, and mock transport invocation pass tests.
+- `VERIFIED_AUTOMATED`: the Android API-27 compose UI requires an explicit review
+  dialog and clears the body only after transport acceptance.
+- `DOCUMENTED`: installed `imsg 0.3.1` exposes recipient/body as CLI arguments;
+  this can briefly expose them through same-machine process inspection.
+- `UNKNOWN`: real-iPhone send acceptance, delivery, and sent-folder reflection.
 
 ### HFP call-control software
 
@@ -211,9 +226,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
 
 ## Next milestone
 
-Milestone 4: hardware-verified outgoing MAP messages, followed by HFP call control.
-Before that work, validate PBAP parsing and MAP notification behavior with the real
-iPhone using aggregate-only output. Do not deploy the daemon as a system service yet.
+Milestone 4: hardware-verify one deliberately confirmed outgoing MAP message,
+followed by HFP call control. Do not deploy the daemon as a system service yet.
 
 ## End-to-end roadmap
 

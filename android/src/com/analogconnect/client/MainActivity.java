@@ -1,6 +1,8 @@
 package com.analogconnect.client;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.os.Bundle;
 import android.text.InputType;
 import android.text.method.HideReturnsTransformationMethod;
@@ -10,6 +12,7 @@ import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -23,6 +26,8 @@ public final class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private EditText endpoint;
     private EditText token;
+    private EditText recipient;
+    private EditText messageBody;
     private TextView result;
     private TokenVault vault;
 
@@ -35,6 +40,9 @@ public final class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         int padding = dp(24);
         layout.setPadding(padding, padding, padding, padding);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(layout);
 
         TextView title = new TextView(this);
         title.setText("AnalogConnect");
@@ -92,12 +100,42 @@ public final class MainActivity extends Activity {
         });
         layout.addView(check);
 
+        TextView messageTitle = new TextView(this);
+        messageTitle.setText("Send SMS through iPhone");
+        messageTitle.setTextSize(20);
+        messageTitle.setPadding(0, dp(24), 0, dp(8));
+        layout.addView(messageTitle);
+
+        recipient = new EditText(this);
+        recipient.setHint("Recipient number");
+        recipient.setSingleLine(true);
+        recipient.setInputType(InputType.TYPE_CLASS_PHONE);
+        layout.addView(recipient);
+
+        messageBody = new EditText(this);
+        messageBody.setHint("Message");
+        messageBody.setMaxLines(5);
+        messageBody.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        layout.addView(messageBody);
+
+        Button send = new Button(this);
+        send.setText("Review and send");
+        send.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                confirmSend();
+            }
+        });
+        layout.addView(send);
+
         result = new TextView(this);
         result.setText("Not checked");
         result.setPadding(0, dp(20), 0, 0);
         layout.addView(result);
 
-        setContentView(layout);
+        setContentView(scroll);
     }
 
     private void saveEnrollment() {
@@ -138,6 +176,57 @@ public final class MainActivity extends Activity {
                     @Override
                     public void run() {
                         result.setText(finalMessage);
+                    }
+                });
+            }
+        });
+    }
+
+    private void confirmSend() {
+        final String recipientValue = recipient.getText().toString().trim();
+        final String bodyValue = messageBody.getText().toString();
+        if (recipientValue.isEmpty() || bodyValue.isEmpty()) {
+            result.setText("Recipient and message are required");
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Send this SMS?")
+                .setMessage("To: " + recipientValue + "\n\n" + bodyValue)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Send", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        sendMessage(recipientValue, bodyValue);
+                    }
+                })
+                .show();
+    }
+
+    private void sendMessage(final String recipientValue, final String bodyValue) {
+        result.setText("Sending…");
+        final String endpointValue = endpoint.getText().toString();
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                String message;
+                boolean sent = false;
+                try {
+                    new ApiClient().sendMessage(
+                            endpointValue, vault.load(), recipientValue, bodyValue);
+                    message = "Message accepted by iPhone transport";
+                    sent = true;
+                } catch (Exception error) {
+                    message = "Send failed: " + safeMessage(error);
+                }
+                final String finalMessage = message;
+                final boolean clearBody = sent;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        result.setText(finalMessage);
+                        if (clearBody) {
+                            messageBody.setText("");
+                        }
                     }
                 });
             }

@@ -7,7 +7,7 @@ use std::{
 };
 
 use analogconnect_core::MessageSyncState;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -269,6 +269,78 @@ pub struct ImsgMapBackend {
     executable: PathBuf,
 }
 
+#[derive(Clone, Deserialize)]
+pub struct OutboundMessage {
+    pub(crate) recipient: String,
+    pub(crate) body: String,
+}
+
+impl std::fmt::Debug for OutboundMessage {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("OutboundMessage { recipient: [redacted], body: [redacted] }")
+    }
+}
+
+impl OutboundMessage {
+    pub fn new(recipient: String, body: String) -> Result<Self, OutboundMessageError> {
+        let recipient = recipient.trim().to_owned();
+        if recipient.len() < 3
+            || recipient.len() > 32
+            || !recipient
+                .chars()
+                .all(|character| character.is_ascii_digit() || "+-() ".contains(character))
+            || !recipient
+                .chars()
+                .any(|character| character.is_ascii_digit())
+        {
+            return Err(OutboundMessageError::InvalidRecipient);
+        }
+        if body.is_empty() || body.len() > 2_000 || body.contains('\0') {
+            return Err(OutboundMessageError::InvalidBody);
+        }
+        Ok(Self { recipient, body })
+    }
+
+    fn recipient(&self) -> &str {
+        &self.recipient
+    }
+
+    fn body(&self) -> &str {
+        &self.body
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum OutboundMessageError {
+    #[error("recipient must be a valid phone-number-like value")]
+    InvalidRecipient,
+    #[error("message body must contain between 1 and 2000 bytes")]
+    InvalidBody,
+    #[error("message transport failed")]
+    TransportFailed,
+}
+
+pub trait MapSendBackend: Send + Sync {
+    fn send(&self, message: &OutboundMessage) -> Result<(), OutboundMessageError>;
+}
+
+impl MapSendBackend for ImsgMapBackend {
+    fn send(&self, message: &OutboundMessage) -> Result<(), OutboundMessageError> {
+        let status = Command::new(&self.executable)
+            .arg("send")
+            .arg(message.recipient())
+            .arg(message.body())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|_| OutboundMessageError::TransportFailed)?;
+        status
+            .success()
+            .then_some(())
+            .ok_or(OutboundMessageError::TransportFailed)
+    }
+}
+
 impl ImsgMapBackend {
     #[must_use]
     pub fn new(executable: impl Into<PathBuf>) -> Self {
@@ -396,5 +468,35 @@ mod tests {
         let summary = coordinator.summary().unwrap();
         assert_eq!(summary.failed_syncs, 1);
         assert_eq!(summary.state, MessageSyncState::BackingOff);
+    }
+
+    #[test]
+    fn outbound_message_validates_and_redacts_private_values() {
+        let recipient = "+1 (555) 010-0200".to_owned();
+        let body = "synthetic message body".to_owned();
+        let message = OutboundMessage::new(recipient.clone(), body.clone()).unwrap();
+        let debug = format!("{message:?}");
+        assert!(!debug.contains(&recipient));
+        assert!(!debug.contains(&body));
+        assert_eq!(
+            debug,
+            "OutboundMessage { recipient: [redacted], body: [redacted] }"
+        );
+    }
+
+    #[test]
+    fn outbound_message_rejects_invalid_and_oversized_input() {
+        assert_eq!(
+            OutboundMessage::new("not-a-number".to_owned(), "hello".to_owned()).unwrap_err(),
+            OutboundMessageError::InvalidRecipient
+        );
+        assert_eq!(
+            OutboundMessage::new("5550100".to_owned(), String::new()).unwrap_err(),
+            OutboundMessageError::InvalidBody
+        );
+        assert_eq!(
+            OutboundMessage::new("5550100".to_owned(), "x".repeat(2_001)).unwrap_err(),
+            OutboundMessageError::InvalidBody
+        );
     }
 }

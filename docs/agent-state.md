@@ -1,14 +1,14 @@
 # AnalogConnect Agent State
 
 ## Current milestone
-Milestone 3 — MAP incoming synchronization — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
+Milestone 4 — MAP outbound messaging — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
 
 ## Current phase
 Hardware-free backend foundations and authenticated server control plane — COMPLETE
 
 ## Current objective
-Validate PBAP parsing and MAP notification behavior against the real iPhone under
-privacy-controlled procedures, then proceed to outgoing MAP and HFP call control.
+Hardware-validate one deliberately confirmed outbound MAP message under a
+privacy-controlled procedure, then proceed to HFP call control.
 
 ## Current classification
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`

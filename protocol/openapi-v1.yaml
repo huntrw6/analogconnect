@@ -56,6 +56,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageSyncSummary"
+  /api/v1/messages:
+    post:
+      operationId: sendMessage
+      security:
+        - bearerAuth: []
+      description: Sends one transient SMS through iPhone MAP without retaining or echoing its content.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutboundMessage"
+      responses:
+        "202":
+          description: The MAP transport accepted the send operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendMessageResponse"
+        "422":
+          description: Recipient or body validation failed without echoing input.
+        "502":
+          description: MAP transport failed with a redacted error.
   /api/v1/audio/summary:
     get:
       operationId: getAudioBridgeSummary
@@ -191,6 +214,26 @@ components:
             - type: integer
               minimum: 0
             - type: "null"
+    OutboundMessage:
+      type: object
+      additionalProperties: false
+      required: [recipient, body]
+      properties:
+        recipient:
+          type: string
+          minLength: 3
+          maxLength: 32
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    SendMessageResponse:
+      type: object
+      additionalProperties: false
+      required: [accepted]
+      properties:
+        accepted:
+          const: true
     AudioQueueSummary:
       type: object
       additionalProperties: false

@@ -11,12 +11,13 @@ use audio::AudioBridgeSummary;
 use auth::AuthToken;
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::get,
 };
 use contacts::ContactSummary;
-use messages::MessageSyncSummary;
+use messages::{ImsgMapBackend, MapSendBackend, MessageSyncSummary, OutboundMessage};
 use serde::Serialize;
 use tokio::sync::RwLock;
 
@@ -29,17 +30,27 @@ pub struct AppState {
     message_summary: Arc<RwLock<MessageSyncSummary>>,
     audio_summary: Arc<RwLock<AudioBridgeSummary>>,
     auth_token: Arc<AuthToken>,
+    message_sender: Arc<dyn MapSendBackend>,
     started_at: Instant,
 }
 
 impl AppState {
     pub fn new(status: SystemStatus, auth_token: AuthToken) -> Self {
+        Self::with_message_sender(status, auth_token, Arc::new(ImsgMapBackend::default()))
+    }
+
+    pub fn with_message_sender(
+        status: SystemStatus,
+        auth_token: AuthToken,
+        message_sender: Arc<dyn MapSendBackend>,
+    ) -> Self {
         Self {
             status: Arc::new(RwLock::new(status)),
             contact_summary: Arc::new(RwLock::new(ContactSummary::default())),
             message_summary: Arc::new(RwLock::new(MessageSyncSummary::default())),
             audio_summary: Arc::new(RwLock::new(AudioBridgeSummary::default())),
             auth_token: Arc::new(auth_token),
+            message_sender,
             started_at: Instant::now(),
         }
     }
@@ -59,6 +70,7 @@ pub fn app(state: AppState) -> Router {
         .route("/api/v1/status", get(status))
         .route("/api/v1/contacts/summary", get(contact_summary))
         .route("/api/v1/messages/summary", get(message_summary))
+        .route("/api/v1/messages", axum::routing::post(send_message))
         .route("/api/v1/audio/summary", get(audio_summary))
         .with_state(state)
 }
@@ -96,6 +108,35 @@ async fn message_summary(
     Ok(Json(state.message_summary.read().await.clone()))
 }
 
+#[derive(Debug, Serialize)]
+struct SendMessageResponse {
+    accepted: bool,
+}
+
+async fn send_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, Json<SendMessageResponse>), StatusCode> {
+    authorize(&state, &headers)?;
+    if body.len() > 4096 {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    let request: OutboundMessage =
+        serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let message = OutboundMessage::new(request.recipient, request.body)
+        .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    let sender = state.message_sender.clone();
+    tokio::task::spawn_blocking(move || sender.send(&message))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(SendMessageResponse { accepted: true }),
+    ))
+}
+
 async fn audio_summary(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -119,6 +160,8 @@ fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode},
@@ -127,6 +170,20 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+
+    struct MockMessageSender {
+        calls: AtomicUsize,
+    }
+
+    impl MapSendBackend for MockMessageSender {
+        fn send(
+            &self,
+            _message: &messages::OutboundMessage,
+        ) -> Result<(), messages::OutboundMessageError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
 
     fn test_token_text() -> String {
         [
@@ -142,9 +199,12 @@ mod tests {
     }
 
     fn test_state() -> AppState {
-        AppState::new(
+        AppState::with_message_sender(
             SystemStatus::default(),
             AuthToken::new(test_token_text()).unwrap(),
+            Arc::new(MockMessageSender {
+                calls: AtomicUsize::new(0),
+            }),
         )
     }
 
@@ -238,6 +298,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn outbound_message_returns_only_aggregate_acceptance() {
+        let response = app(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/messages")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"recipient":"5550100","body":"synthetic message"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json, serde_json::json!({ "accepted": true }));
+    }
+
+    #[tokio::test]
+    async fn outbound_message_rejects_invalid_input_without_echoing_it() {
+        let private_body = "synthetic private body marker";
+        let response = app(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/messages")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{"recipient":"invalid","body":"{private_body}"}}"#
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        assert!(!String::from_utf8_lossy(&body).contains(private_body));
+    }
+
+    #[tokio::test]
     async fn audio_summary_contains_no_samples() {
         let response = app(test_state())
             .oneshot(authorized_request("/api/v1/audio/summary"))
@@ -253,14 +358,21 @@ mod tests {
 
     #[tokio::test]
     async fn non_health_endpoints_require_authentication() {
-        for uri in [
-            "/api/v1/status",
-            "/api/v1/contacts/summary",
-            "/api/v1/messages/summary",
-            "/api/v1/audio/summary",
+        for (method, uri) in [
+            ("GET", "/api/v1/status"),
+            ("GET", "/api/v1/contacts/summary"),
+            ("GET", "/api/v1/messages/summary"),
+            ("POST", "/api/v1/messages"),
+            ("GET", "/api/v1/audio/summary"),
         ] {
             let response = app(test_state())
-                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(uri)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
                 .await
                 .unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{uri}");
@@ -268,6 +380,7 @@ mod tests {
             let response = app(test_state())
                 .oneshot(
                     Request::builder()
+                        .method(method)
                         .uri(uri)
                         .header(
                             "authorization",
