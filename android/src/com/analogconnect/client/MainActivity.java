@@ -59,12 +59,14 @@ public final class MainActivity extends Activity {
         layout.addView(subtitle);
 
         endpoint = new EditText(this);
+        endpoint.setId(R.id.endpoint);
         endpoint.setHint("Daemon endpoint");
         endpoint.setSingleLine(true);
         endpoint.setText(getPreferences(MODE_PRIVATE).getString(ENDPOINT_KEY, DEFAULT_ENDPOINT));
         layout.addView(endpoint);
 
         certificatePin = new EditText(this);
+        certificatePin.setId(R.id.certificate_pin);
         certificatePin.setHint("HTTPS certificate SHA-256 pin");
         certificatePin.setSingleLine(true);
         certificatePin.setText(getPreferences(MODE_PRIVATE)
@@ -72,6 +74,7 @@ public final class MainActivity extends Activity {
         layout.addView(certificatePin);
 
         token = new EditText(this);
+        token.setId(R.id.enrollment_token);
         token.setHint("Enrollment token");
         token.setSingleLine(true);
         token.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -92,6 +95,7 @@ public final class MainActivity extends Activity {
         layout.addView(showToken);
 
         Button save = new Button(this);
+        save.setId(R.id.save_enrollment);
         save.setText("Save enrollment");
         save.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -102,6 +106,7 @@ public final class MainActivity extends Activity {
         layout.addView(save);
 
         Button check = new Button(this);
+        check.setId(R.id.check_daemon);
         check.setText("Check daemon");
         check.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -211,6 +216,7 @@ public final class MainActivity extends Activity {
         layout.addView(sendTone);
 
         result = new TextView(this);
+        result.setId(R.id.result);
         result.setText("Not checked");
         result.setPadding(0, dp(20), 0, 0);
         layout.addView(result);

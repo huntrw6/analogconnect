@@ -197,6 +197,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tls12_is_compiled_for_android_8_compatibility() {
+        assert_eq!(
+            rustls::version::TLS12.version,
+            rustls::ProtocolVersion::TLSv1_2
+        );
+    }
+
+    #[test]
     fn plaintext_listener_is_restricted_to_loopback() {
         for address in ["127.0.0.1:8787", "[::1]:8787"] {
             assert_eq!(

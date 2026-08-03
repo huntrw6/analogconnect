@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="endpoint" type="id" />
+    <item name="certificate_pin" type="id" />
+    <item name="enrollment_token" type="id" />
+    <item name="save_enrollment" type="id" />
+    <item name="check_daemon" type="id" />
+    <item name="result" type="id" />
+</resources>

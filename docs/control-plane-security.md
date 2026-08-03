@@ -14,6 +14,8 @@
 - Partial TLS configuration, unreadable/invalid PEM data, and insecure Unix
   private-key permissions fail startup.
 - Android accepts cleartext HTTP only for loopback and requires HTTPS elsewhere.
+- The HTTPS listener supports TLS 1.2 for Android 8.1 compatibility and TLS 1.3
+  for newer clients; older TLS versions remain disabled.
 
 ## Configuration
 
@@ -116,8 +118,11 @@ the Android HTTP client also disables URL caching and sends a no-store request.
   transient result is returned only in memory and is never logged or persisted.
 - `VERIFIED_AUTOMATED`: HTTPS listener selection, explicit LAN binding, partial
   configuration rejection, and private-key permission checks.
-- `UNKNOWN`: Android-to-Pi HTTPS on the real LAN, network-connection binding, and
-  revocation during a real call.
+- `VERIFIED_HARDWARE`: Android 8.1 requires TLS 1.2 on the target phone; a
+  TLS-1.3-only listener reaches the Pi but fails the handshake.
+- `VERIFIED_HARDWARE`: the real Android 8.1 phone reached the Pi over Wi-Fi,
+  accepted the exact pinned self-signed leaf, and authenticated to the HTTPS API.
+- `UNKNOWN`: network-connection binding and revocation during a real call.
 
 ## Enforced cleartext boundary
 
