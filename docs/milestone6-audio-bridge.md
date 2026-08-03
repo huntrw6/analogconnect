@@ -54,6 +54,19 @@ cargo run --release --quiet --bin audio-bench
 The benchmark moves synthetic silence through the uplink queue and reports only
 throughput, real-time multiple, and drop count.
 
+## Privacy-safe SCO node validation
+
+During an active test call:
+
+```bash
+cargo run --quiet --bin sco-validate
+```
+
+The locator selects only PipeWire nodes whose official `factory.name` is
+`api.bluez5.sco.source` or `api.bluez5.sco.sink`. It ignores address, path, name,
+and description properties. Output contains only whether exactly one pair exists;
+numeric IDs are kept transient and are not printed.
+
 ## Evidence
 
 - `VERIFIED_AUTOMATED`: format, redaction, overflow, direction independence, and
@@ -64,5 +77,7 @@ throughput, real-time multiple, and drop count.
   same cross-platform golden header vector and both reject malformed input.
 - `VERIFIED_AUTOMATED`: the Android jitter buffer matches the Pi's startup,
   reorder, missing, duplicate, late, and overflow behavior under synthetic tests.
+- `VERIFIED_AUTOMATED`: SCO discovery fixtures return only a numeric source/sink
+  pair, ignore private properties, and fail closed on missing or ambiguous nodes.
 - `UNKNOWN`: live PipeWire capture/playback, codec conversion, Android transport,
   end-to-end latency, and human-confirmed intelligibility.

@@ -1,5 +1,7 @@
 use std::{
     collections::{BTreeMap, VecDeque},
+    path::PathBuf,
+    process::{Command, Stdio},
     sync::Mutex,
     time::Instant,
 };
@@ -121,6 +123,133 @@ impl JitterBuffer {
 pub enum JitterBufferError {
     #[error("jitter buffer capacity and target depth must be valid")]
     InvalidCapacity,
+}
+
+pub trait PipeWireDumpRunner: Send + Sync {
+    type Error;
+
+    /// Returns a transient PipeWire snapshot. Implementations and callers must
+    /// not log or persist it because unrelated properties can contain addresses.
+    fn dump(&self) -> Result<String, Self::Error>;
+}
+
+pub struct PwDumpRunner {
+    executable: PathBuf,
+}
+
+impl PwDumpRunner {
+    #[must_use]
+    pub fn new(executable: impl Into<PathBuf>) -> Self {
+        Self {
+            executable: executable.into(),
+        }
+    }
+}
+
+impl Default for PwDumpRunner {
+    fn default() -> Self {
+        Self::new("pw-dump")
+    }
+}
+
+impl PipeWireDumpRunner for PwDumpRunner {
+    type Error = ();
+
+    fn dump(&self) -> Result<String, Self::Error> {
+        let output = Command::new(&self.executable)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .map_err(|_| ())?;
+        if !output.status.success() {
+            return Err(());
+        }
+        String::from_utf8(output.stdout).map_err(|_| ())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ScoNodePair {
+    /// Captures iPhone audio from PipeWire for Android downlink.
+    pub source_id: u32,
+    /// Plays Android uplink into PipeWire toward the iPhone.
+    pub sink_id: u32,
+}
+
+impl std::fmt::Debug for ScoNodePair {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ScoNodePair")
+            .field("source_id", &self.source_id)
+            .field("sink_id", &self.sink_id)
+            .finish()
+    }
+}
+
+pub struct ScoNodeLocator<R> {
+    runner: R,
+}
+
+impl<R> ScoNodeLocator<R>
+where
+    R: PipeWireDumpRunner,
+{
+    #[must_use]
+    pub const fn new(runner: R) -> Self {
+        Self { runner }
+    }
+
+    pub fn locate(&self) -> Result<ScoNodePair, ScoNodeError> {
+        let dump = self.runner.dump().map_err(|_| ScoNodeError::Unavailable)?;
+        let objects: serde_json::Value =
+            serde_json::from_str(&dump).map_err(|_| ScoNodeError::InvalidSnapshot)?;
+        let objects = objects.as_array().ok_or(ScoNodeError::InvalidSnapshot)?;
+        let mut sources = Vec::new();
+        let mut sinks = Vec::new();
+        for object in objects {
+            if object.get("type").and_then(|value| value.as_str())
+                != Some("PipeWire:Interface:Node")
+            {
+                continue;
+            }
+            let Some(id) = object
+                .get("id")
+                .and_then(|value| value.as_u64())
+                .and_then(|value| u32::try_from(value).ok())
+            else {
+                continue;
+            };
+            match object
+                .pointer("/info/props/factory.name")
+                .and_then(|value| value.as_str())
+            {
+                Some("api.bluez5.sco.source") => sources.push(id),
+                Some("api.bluez5.sco.sink") => sinks.push(id),
+                _ => {}
+            }
+        }
+        sources.sort_unstable();
+        sources.dedup();
+        sinks.sort_unstable();
+        sinks.dedup();
+        if sources.len() != 1 || sinks.len() != 1 || sources[0] == sinks[0] {
+            return Err(ScoNodeError::Ambiguous);
+        }
+        Ok(ScoNodePair {
+            source_id: sources[0],
+            sink_id: sinks[0],
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum ScoNodeError {
+    #[error("PipeWire snapshot is unavailable")]
+    Unavailable,
+    #[error("PipeWire snapshot is invalid")]
+    InvalidSnapshot,
+    #[error("PipeWire SCO node state is absent or ambiguous")]
+    Ambiguous,
 }
 
 struct QueueState {
@@ -297,5 +426,67 @@ mod tests {
         assert_eq!(buffer.summary().overflow, 1);
         assert_eq!(buffer.pop().unwrap().sequence(), 5);
         assert_eq!(buffer.pop().unwrap().sequence(), 6);
+    }
+
+    struct FixtureDumpRunner {
+        dump: String,
+    }
+
+    impl PipeWireDumpRunner for FixtureDumpRunner {
+        type Error = ();
+
+        fn dump(&self) -> Result<String, Self::Error> {
+            Ok(self.dump.clone())
+        }
+    }
+
+    #[test]
+    fn sco_locator_uses_only_factory_and_numeric_ids() {
+        let private_marker = "PRIVATE-BLUETOOTH-MARKER";
+        let dump = format!(
+            r#"[
+              {{"id":71,"type":"PipeWire:Interface:Node","info":{{"props":{{
+                "factory.name":"api.bluez5.sco.source",
+                "node.name":"{private_marker}"}}}}}},
+              {{"id":72,"type":"PipeWire:Interface:Node","info":{{"props":{{
+                "factory.name":"api.bluez5.sco.sink",
+                "api.bluez5.address":"{private_marker}"}}}}}},
+              {{"id":73,"type":"PipeWire:Interface:Node","info":{{"props":{{
+                "factory.name":"api.alsa.pcm.sink"}}}}}}
+            ]"#
+        );
+        let nodes = ScoNodeLocator::new(FixtureDumpRunner { dump })
+            .locate()
+            .unwrap();
+        assert_eq!(nodes.source_id, 71);
+        assert_eq!(nodes.sink_id, 72);
+        assert!(!format!("{nodes:?}").contains(private_marker));
+    }
+
+    #[test]
+    fn sco_locator_fails_closed_on_missing_duplicate_or_invalid_nodes() {
+        for dump in [
+            "[]",
+            r#"[
+              {"id":1,"type":"PipeWire:Interface:Node","info":{"props":{"factory.name":"api.bluez5.sco.source"}}},
+              {"id":2,"type":"PipeWire:Interface:Node","info":{"props":{"factory.name":"api.bluez5.sco.source"}}},
+              {"id":3,"type":"PipeWire:Interface:Node","info":{"props":{"factory.name":"api.bluez5.sco.sink"}}}
+            ]"#,
+        ] {
+            assert_eq!(
+                ScoNodeLocator::new(FixtureDumpRunner {
+                    dump: dump.to_owned()
+                })
+                .locate(),
+                Err(ScoNodeError::Ambiguous)
+            );
+        }
+        assert_eq!(
+            ScoNodeLocator::new(FixtureDumpRunner {
+                dump: "private malformed payload".to_owned()
+            })
+            .locate(),
+            Err(ScoNodeError::InvalidSnapshot)
+        );
     }
 }

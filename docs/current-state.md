@@ -155,6 +155,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
   header vector without including sample values in diagnostics.
 - `VERIFIED_AUTOMATED`: Android sequence handling and bounded jitter behavior match
   the Pi policy, including the shared signed-63-bit wire range.
+- `VERIFIED_AUTOMATED`: privacy-safe PipeWire SCO discovery selects only official
+  source/sink factory identifiers and the validator emits only aggregate presence.
 - `UNKNOWN`: PipeWire node binding, codec conversion, network transport latency,
   and intelligibility with real call audio.
 
