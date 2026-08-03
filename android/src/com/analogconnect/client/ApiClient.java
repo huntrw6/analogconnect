@@ -1,6 +1,10 @@
 package com.analogconnect.client;
 
+import android.os.SystemClock;
+
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -69,6 +73,49 @@ final class ApiClient {
         }
     }
 
+    MediaSessionCredentials createMediaSession(String endpoint, String token) throws IOException {
+        if (token == null || token.isEmpty()) {
+            throw new IOException("Enrollment token is missing");
+        }
+        URL url = Endpoint.parse(endpoint, "/api/v1/audio/sessions");
+        HttpURLConnection connection = open(url);
+        connection.setConnectTimeout(TIMEOUT_MS);
+        connection.setReadTimeout(TIMEOUT_MS);
+        connection.setRequestMethod("POST");
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Authorization", "Bearer " + token);
+        connection.setFixedLengthStreamingMode(0);
+        connection.setDoOutput(true);
+        try {
+            connection.getOutputStream().close();
+            int status = connection.getResponseCode();
+            if (status != HttpURLConnection.HTTP_CREATED) {
+                throw new IOException("Daemon returned HTTP " + status);
+            }
+            byte[] response = readBounded(connection.getInputStream(), 1024);
+            JSONObject json = new JSONObject(new String(response, StandardCharsets.UTF_8));
+            if (json.length() != 3 || !json.has("session_id") || !json.has("token")
+                    || !json.has("lifetime_seconds")) {
+                throw new IOException("Media session response is invalid");
+            }
+            Object lifetime = json.get("lifetime_seconds");
+            if (!(lifetime instanceof Integer) && !(lifetime instanceof Long)) {
+                throw new IOException("Media session response is invalid");
+            }
+            return new MediaSessionCredentials(
+                    json.getString("session_id"),
+                    json.getString("token"),
+                    ((Number) lifetime).longValue(),
+                    SystemClock.elapsedRealtime());
+        } catch (JSONException error) {
+            throw new IOException("Media session response is invalid");
+        } catch (MediaSessionCredentials.CredentialException error) {
+            throw new IOException("Media session response is invalid");
+        } finally {
+            connection.disconnect();
+        }
+    }
+
     private int post(String endpoint, String path, String token, JSONObject request)
             throws IOException {
         byte[] payload = request.toString().getBytes(StandardCharsets.UTF_8);
@@ -129,5 +176,22 @@ final class ApiClient {
             }
         }
         return connection;
+    }
+
+    private static byte[] readBounded(InputStream input, int maximumBytes) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[256];
+        int total = 0;
+        while (true) {
+            int count = input.read(buffer);
+            if (count < 0) {
+                return output.toByteArray();
+            }
+            total += count;
+            if (total > maximumBytes) {
+                throw new IOException("Media session response is too large");
+            }
+            output.write(buffer, 0, count);
+        }
     }
 }

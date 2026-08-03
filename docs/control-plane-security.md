@@ -75,6 +75,10 @@ does not authorize LAN exposure; it will move unchanged behind the TLS listener.
 - `VERIFIED_AUTOMATED`: the issuance endpoint rejects inactive call/SCO state,
   requires bearer authentication, returns only the three contract fields, and
   produces a credential that the server registry can claim.
+- `VERIFIED_AUTOMATED`: the API-27 client compiles a matching request path that
+  requires HTTP 201, bounds the response to 1 KiB, rejects missing or extra fields,
+  validates all values, and timestamps expiry with Android's monotonic clock. The
+  transient result is returned only in memory and is never logged or persisted.
 - `UNKNOWN`: TLS delivery, network-connection binding, and revocation during a
   real call.
 
