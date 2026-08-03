@@ -46,4 +46,7 @@ ten-minute latency growth on the actual Android phone.
   256-bit credentials, opaque 128-bit IDs, a five-minute maximum lifetime,
   monotonic expiry, immediate revocation, constant-time comparison, and redacted
   diagnostics.
+- `VERIFIED_AUTOMATED`: the media registry permits one current call session and
+  one claimed client, revokes replaced/ended grants, and safely releases a dropped
+  client for bounded reconnection.
 - `UNKNOWN`: live transport benchmarks and the final RTP/Opus versus WebRTC choice.

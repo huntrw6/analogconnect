@@ -45,7 +45,10 @@ foundation issues a distinct 256-bit credential and 128-bit opaque session ID
 from the operating system random source. Grants last no more than five minutes,
 expire against a monotonic clock, and can be revoked immediately on call teardown.
 Presented credentials are strict fixed-length hexadecimal and their decoded bytes
-are compared in constant time.
+are compared in constant time. A registry permits only one current call-media
+grant and one claimed connection. Issuing a replacement revokes the old grant;
+dropping a connection lease permits a reconnect while the grant remains valid.
+An existing lease observes expiry, replacement, or teardown revocation.
 
 Enrollment and grant `Debug` output redact both values. Random-source and parsing
 errors are fixed classifications that contain no candidate material. The eventual
@@ -57,8 +60,11 @@ authenticated client and must never log or persist it.
   failure, and redaction.
 - `VERIFIED_AUTOMATED`: the Raspberry Pi operating-system source produces distinct
   credentials that authorize their corresponding grants without printing them.
-- `UNKNOWN`: TLS delivery, connection binding, single-client enforcement, and
-  revocation during a real call.
+- `VERIFIED_AUTOMATED`: one-session and one-connection enforcement, reconnect after
+  release, replacement revocation, teardown revocation, and registry/lease
+  redaction pass deterministic tests.
+- `UNKNOWN`: TLS delivery, network-connection binding, and revocation during a
+  real call.
 
 ## Enforced cleartext boundary
 

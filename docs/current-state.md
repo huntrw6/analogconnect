@@ -193,6 +193,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: per-call media grants use separate OS-random credentials,
   opaque session IDs, strict constant-time authorization, a five-minute maximum
   lifetime, monotonic expiry, immediate revocation, and redacted diagnostics.
+- `VERIFIED_AUTOMATED`: the media registry enforces one current session and one
+  connected client, revokes replacement/teardown, and allows bounded reconnects
+  only after the prior connection lease is released.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using
   Android Keystore AES/GCM and does not log tokens or response bodies.
 - `VERIFIED_HARDWARE`: manual enrollment persistence, authenticated daemon access,
