@@ -5,6 +5,8 @@ provides local enrollment settings and a privacy-safe daemon health/status check
 The bearer token is encrypted with an Android Keystore AES/GCM key and neither
 the token nor API response bodies are logged. Token entry is hidden by default
 and has an explicit visibility switch for easier entry on physical keyboards.
+Non-loopback endpoints require HTTPS and an explicitly enrolled SHA-256 leaf
+certificate pin. The pin is not a credential, but diagnostics still redact it.
 
 The Raspberry Pi daemon is still loopback-bound, so phone-to-Pi networking is
 not enabled in the current milestone. Installing and launching this APK checks

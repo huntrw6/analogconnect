@@ -170,6 +170,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `DOCUMENTED`: the OpenAPI contract marks health public and every other endpoint protected.
 - `VERIFIED_AUTOMATED`: plaintext daemon binds and Android HTTP endpoints are
   restricted to loopback; non-loopback transport must use TLS/HTTPS.
+- `VERIFIED_AUTOMATED`: Android certificate-pin parsing, constant-time SHA-256
+  matching, redaction, and pinned TLS trust-manager packaging pass API-27 checks.
 - `VERIFIED_AUTOMATED`: authenticated SMS/HFP mutations are rate-limited and emit
   only fixed payload-free acceptance audit events.
 - `VERIFIED_AUTOMATED`: staged current/previous bearer-token rotation supports

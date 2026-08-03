@@ -44,6 +44,9 @@ The bearer foundation is not permission to expose the daemon on a LAN yet.
   while the daemon has no TLS listener.
 - `VERIFIED_AUTOMATED`: Android accepts `http://` only for `localhost`,
   `127.0.0.1`, or `::1`; all other endpoint hosts must use `https://`.
+- `VERIFIED_AUTOMATED`: Android HTTPS requires an enrolled SHA-256 leaf-certificate
+  pin, uses constant-time digest comparison, checks certificate validity dates,
+  retains platform hostname verification, and redacts pin diagnostics.
 
 This makes the LAN restriction fail closed rather than relying only on operator
 discipline while certificate provisioning is still pending.

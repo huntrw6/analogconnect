@@ -22,10 +22,12 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final String DEFAULT_ENDPOINT = "http://127.0.0.1:8787";
     private static final String ENDPOINT_KEY = "endpoint";
+    private static final String CERTIFICATE_PIN_KEY = "certificate_pin";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private EditText endpoint;
     private EditText token;
+    private EditText certificatePin;
     private EditText recipient;
     private EditText messageBody;
     private EditText dialTarget;
@@ -61,6 +63,13 @@ public final class MainActivity extends Activity {
         endpoint.setSingleLine(true);
         endpoint.setText(getPreferences(MODE_PRIVATE).getString(ENDPOINT_KEY, DEFAULT_ENDPOINT));
         layout.addView(endpoint);
+
+        certificatePin = new EditText(this);
+        certificatePin.setHint("HTTPS certificate SHA-256 pin");
+        certificatePin.setSingleLine(true);
+        certificatePin.setText(getPreferences(MODE_PRIVATE)
+                .getString(CERTIFICATE_PIN_KEY, ""));
+        layout.addView(certificatePin);
 
         token = new EditText(this);
         token.setHint("Enrollment token");
@@ -211,10 +220,21 @@ public final class MainActivity extends Activity {
 
     private void saveEnrollment() {
         try {
-            Endpoint.parse(endpoint.getText().toString(), "/api/v1/health");
+            String endpointValue = endpoint.getText().toString().trim();
+            String pinValue = certificatePin.getText().toString().trim();
+            if ("https".equals(Endpoint.parse(endpointValue, "/api/v1/health").getProtocol())) {
+                if (pinValue.isEmpty()) {
+                    throw new IllegalArgumentException("HTTPS certificate pin is required");
+                }
+                CertificatePin.parse(pinValue);
+            } else if (!pinValue.isEmpty()) {
+                CertificatePin.parse(pinValue);
+            }
             vault.store(token.getText().toString());
             getPreferences(MODE_PRIVATE).edit()
-                    .putString(ENDPOINT_KEY, endpoint.getText().toString().trim()).apply();
+                    .putString(ENDPOINT_KEY, endpointValue)
+                    .putString(CERTIFICATE_PIN_KEY, pinValue)
+                    .apply();
             token.setText("");
             result.setText("Enrollment saved securely");
         } catch (Exception error) {
@@ -230,7 +250,7 @@ public final class MainActivity extends Activity {
             public void run() {
                 String message;
                 try {
-                    ApiClient client = new ApiClient();
+                    ApiClient client = apiClient();
                     client.health(endpointValue);
                     String savedToken = vault.load();
                     if (savedToken.isEmpty()) {
@@ -282,7 +302,7 @@ public final class MainActivity extends Activity {
                 String message;
                 boolean sent = false;
                 try {
-                    new ApiClient().sendMessage(
+                    apiClient().sendMessage(
                             endpointValue, vault.load(), recipientValue, bodyValue);
                     message = "Message accepted by iPhone transport";
                     sent = true;
@@ -327,7 +347,7 @@ public final class MainActivity extends Activity {
             public void run() {
                 String message;
                 try {
-                    new ApiClient().executeCallCommand(endpointValue, vault.load(), action, value);
+                    apiClient().executeCallCommand(endpointValue, vault.load(), action, value);
                     message = "Call command accepted";
                 } catch (Exception error) {
                     message = "Call command failed: " + safeMessage(error);
@@ -346,6 +366,11 @@ public final class MainActivity extends Activity {
     private static String safeMessage(Exception error) {
         String message = error.getMessage();
         return message == null || message.trim().isEmpty() ? "unexpected error" : message;
+    }
+
+    private ApiClient apiClient() throws Exception {
+        return new ApiClient(getPreferences(MODE_PRIVATE)
+                .getString(CERTIFICATE_PIN_KEY, ""));
     }
 
     private int dp(int value) {

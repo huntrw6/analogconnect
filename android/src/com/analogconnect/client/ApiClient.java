@@ -5,12 +5,24 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+
+import javax.net.ssl.HttpsURLConnection;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 final class ApiClient {
     private static final int TIMEOUT_MS = 5000;
+    private final CertificatePin certificatePin;
+
+    ApiClient() {
+        certificatePin = null;
+    }
+
+    ApiClient(String pin) throws GeneralSecurityException {
+        certificatePin = pin == null || pin.trim().isEmpty() ? null : CertificatePin.parse(pin);
+    }
 
     int health(String endpoint) throws IOException {
         return request(Endpoint.parse(endpoint, "/api/v1/health"), "");
@@ -61,7 +73,7 @@ final class ApiClient {
             throws IOException {
         byte[] payload = request.toString().getBytes(StandardCharsets.UTF_8);
         URL url = Endpoint.parse(endpoint, path);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        HttpURLConnection connection = open(url);
         connection.setConnectTimeout(TIMEOUT_MS);
         connection.setReadTimeout(TIMEOUT_MS);
         connection.setRequestMethod("POST");
@@ -85,7 +97,7 @@ final class ApiClient {
     }
 
     private int request(URL url, String token) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        HttpURLConnection connection = open(url);
         connection.setConnectTimeout(TIMEOUT_MS);
         connection.setReadTimeout(TIMEOUT_MS);
         connection.setRequestMethod("GET");
@@ -102,5 +114,20 @@ final class ApiClient {
         } finally {
             connection.disconnect();
         }
+    }
+
+    private HttpURLConnection open(URL url) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        if (connection instanceof HttpsURLConnection && certificatePin == null) {
+            throw new IOException("HTTPS certificate pin is required");
+        }
+        if (connection instanceof HttpsURLConnection) {
+            try {
+                ((HttpsURLConnection) connection).setSSLSocketFactory(certificatePin.socketFactory());
+            } catch (GeneralSecurityException error) {
+                throw new IOException("Could not configure certificate pinning");
+            }
+        }
+        return connection;
     }
 }

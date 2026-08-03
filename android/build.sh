@@ -37,12 +37,15 @@ javac -d "$test_classes_dir" \
     "$script_dir/src/com/analogconnect/client/Endpoint.java" \
     "$script_dir/src/com/analogconnect/client/AudioPacketCodec.java" \
     "$script_dir/src/com/analogconnect/client/AudioJitterBuffer.java" \
+    "$script_dir/src/com/analogconnect/client/CertificatePin.java" \
     "$script_dir/test/com/analogconnect/client/EndpointTest.java" \
     "$script_dir/test/com/analogconnect/client/AudioPacketCodecTest.java" \
-    "$script_dir/test/com/analogconnect/client/AudioJitterBufferTest.java"
+    "$script_dir/test/com/analogconnect/client/AudioJitterBufferTest.java" \
+    "$script_dir/test/com/analogconnect/client/CertificatePinTest.java"
 java -cp "$test_classes_dir" com.analogconnect.client.EndpointTest
 java -cp "$test_classes_dir" com.analogconnect.client.AudioPacketCodecTest
 java -cp "$test_classes_dir" com.analogconnect.client.AudioJitterBufferTest
+java -cp "$test_classes_dir" com.analogconnect.client.CertificatePinTest
 
 aapt package -f -m -J "$generated_dir" -M "$script_dir/AndroidManifest.xml" \
     -S "$script_dir/res" -I "$platform_jar"
