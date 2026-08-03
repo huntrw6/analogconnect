@@ -11,6 +11,11 @@ use analogconnect_core::{AudioFormat, AudioFrame, AudioPacket, AudioTransportSta
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::process::run_bounded;
+
+const HELPER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+const MAX_HELPER_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+
 struct QueuedFrame {
     frame: AudioFrame,
     enqueued_at: Instant,
@@ -157,15 +162,14 @@ impl PipeWireDumpRunner for PwDumpRunner {
     type Error = ();
 
     fn dump(&self) -> Result<String, Self::Error> {
-        let output = Command::new(&self.executable)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .map_err(|_| ())?;
-        if !output.status.success() {
-            return Err(());
-        }
-        String::from_utf8(output.stdout).map_err(|_| ())
+        let output = run_bounded(
+            &self.executable,
+            std::iter::empty::<&str>(),
+            HELPER_TIMEOUT,
+            MAX_HELPER_OUTPUT_BYTES,
+        )
+        .map_err(|_| ())?;
+        String::from_utf8(output).map_err(|_| ())
     }
 }
 

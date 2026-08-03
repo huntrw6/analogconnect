@@ -4,6 +4,7 @@ pub mod contacts;
 pub mod hfp;
 pub mod media_auth;
 pub mod messages;
+mod process;
 
 use std::{
     sync::Arc,

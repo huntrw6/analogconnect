@@ -1,11 +1,9 @@
-use std::{
-    path::PathBuf,
-    process::{Command, Stdio},
-    sync::Mutex,
-};
+use std::{path::PathBuf, sync::Mutex};
 
 use analogconnect_core::{CallCommand, CallState, Gain, HfpControlState};
 use thiserror::Error;
+
+use crate::process::run_bounded;
 
 pub trait HfpCommandBackend: Send + Sync {
     type Error;
@@ -36,6 +34,8 @@ const TELEPHONY_SERVICE: &str = "org.pipewire.Telephony";
 const TELEPHONY_ROOT: &str = "/org/pipewire/Telephony";
 const AUDIO_GATEWAY_INTERFACE: &str = "org.pipewire.Telephony.AudioGateway1";
 const CALL_INTERFACE: &str = "org.pipewire.Telephony.Call1";
+const HELPER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+const MAX_HELPER_OUTPUT_BYTES: usize = 1024 * 1024;
 
 pub trait DbusCommandRunner: Send + Sync {
     type Error;
@@ -68,16 +68,14 @@ impl DbusCommandRunner for BusctlRunner {
     type Error = ();
 
     fn run(&self, arguments: &[&str]) -> Result<String, Self::Error> {
-        let output = Command::new(&self.executable)
-            .args(arguments)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .map_err(|_| ())?;
-        if !output.status.success() {
-            return Err(());
-        }
-        String::from_utf8(output.stdout).map_err(|_| ())
+        let output = run_bounded(
+            &self.executable,
+            arguments,
+            HELPER_TIMEOUT,
+            MAX_HELPER_OUTPUT_BYTES,
+        )
+        .map_err(|_| ())?;
+        String::from_utf8(output).map_err(|_| ())
     }
 }
 

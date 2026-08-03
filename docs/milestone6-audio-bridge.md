@@ -83,6 +83,9 @@ contains only whether exactly one pair exists; serials are not printed.
 The runtime observer distinguishes a cleanly absent pair (`inactive`) from a valid
 pair (`sco_active`); malformed, partial, or duplicate state fails closed as an
 audio error.
+`pw-dump` is bounded to two seconds and 16 MiB; stdout is drained only into
+transient memory, stderr is discarded, and a stalled child is killed and reaped
+without including snapshot data in the error.
 
 ## Live PipeWire process boundary
 

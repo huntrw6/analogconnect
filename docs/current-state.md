@@ -220,6 +220,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: status and media issuance refresh HFP, call, and SCO from
   read-only WirePlumber/PipeWire snapshots, so production issuance no longer
   depends on static startup state; observer failure fails closed.
+- `VERIFIED_AUTOMATED`: `busctl` and `pw-dump` snapshot helpers have a two-second
+  wall-time bound and respective 1 MiB/16 MiB output bounds, drain stdout privately,
+  discard stderr, and kill/reap stalled children with fixed payload-free errors.
 - `VERIFIED_AUTOMATED`: Android compiles the matching bounded issuance request and
   validates the response into an in-memory-only monotonic credential object.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using
