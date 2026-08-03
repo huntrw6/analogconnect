@@ -85,6 +85,8 @@ The adjacent PCM adapters reassemble short reads into exact 7.5 ms frames, assig
 monotonic downlink sequence numbers, reject an EOF that bisects a frame, and write
 uplink samples only when their format matches the active stream. Conversion is
 explicitly little-endian to match the framed diagnostic codec and Raspberry Pi.
+The session can transfer both framed directions into independently movable stream
+owners so capture and playback workers do not share a lock or audio buffer.
 
 ## Evidence
 

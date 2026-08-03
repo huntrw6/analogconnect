@@ -319,6 +319,7 @@ impl PwCatCommand {
 pub struct PwCatSession {
     capture: Child,
     playback: Child,
+    format: AudioFormat,
 }
 
 impl PwCatSession {
@@ -346,7 +347,11 @@ impl PwCatSession {
             stop_child(&mut playback);
             return Err(PwCatStreamError::PipeUnavailable);
         }
-        Ok(Self { capture, playback })
+        Ok(Self {
+            capture,
+            playback,
+            format,
+        })
     }
 
     pub fn capture_reader(&mut self) -> Result<&mut ChildStdout, PwCatStreamError> {
@@ -361,6 +366,22 @@ impl PwCatSession {
             .stdin
             .as_mut()
             .ok_or(PwCatStreamError::PipeUnavailable)
+    }
+
+    /// Transfers both anonymous PCM pipes into independently movable framing
+    /// adapters. The session must remain alive to own and reap both processes.
+    pub fn take_frame_streams(&mut self) -> Result<PwCatFrameStreams, PwCatStreamError> {
+        if self.capture.stdout.is_none() || self.playback.stdin.is_none() {
+            return Err(PwCatStreamError::PipeUnavailable);
+        }
+        let capture = self.capture.stdout.take().unwrap();
+        let playback = self.playback.stdin.take().unwrap();
+        Ok(PwCatFrameStreams {
+            downlink: PcmFrameReader::new(capture, self.format)
+                .map_err(|_| PwCatStreamError::PipeUnavailable)?,
+            uplink: PcmFrameWriter::new(playback, self.format)
+                .map_err(|_| PwCatStreamError::PipeUnavailable)?,
+        })
     }
 }
 
@@ -396,6 +417,19 @@ pub enum PwCatStreamError {
     PlaybackStartFailed,
     #[error("PipeWire audio pipe is unavailable")]
     PipeUnavailable,
+}
+
+/// Framed call-audio directions that can be moved to separate worker threads.
+pub struct PwCatFrameStreams {
+    pub downlink: PcmFrameReader<ChildStdout>,
+    pub uplink: PcmFrameWriter<ChildStdin>,
+}
+
+impl PwCatFrameStreams {
+    #[must_use]
+    pub fn into_parts(self) -> (PcmFrameReader<ChildStdout>, PcmFrameWriter<ChildStdin>) {
+        (self.downlink, self.uplink)
+    }
 }
 
 /// Converts the raw little-endian PCM emitted by `pw-cat` into exact HFP frames.
@@ -793,6 +827,21 @@ mod tests {
         let error = PwCatCommand::new(PwCatDirection::Capture, 7, unsupported).unwrap_err();
         assert_eq!(error, PwCatStreamError::UnsupportedFormat);
         assert!(!format!("{error:?}").contains('/'));
+    }
+
+    #[test]
+    fn pw_cat_session_transfers_each_pipe_at_most_once() {
+        let nodes = ScoNodePair {
+            source_serial: 701,
+            sink_serial: 702,
+        };
+        let mut session = PwCatSession::start("true", nodes, AudioFormat::HFP_WIDEBAND).unwrap();
+        let streams = session.take_frame_streams().unwrap();
+        let (_downlink, _uplink) = streams.into_parts();
+        assert!(matches!(
+            session.take_frame_streams(),
+            Err(PwCatStreamError::PipeUnavailable)
+        ));
     }
 
     #[test]

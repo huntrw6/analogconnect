@@ -15,11 +15,12 @@ interpretations are superseded.
   redacted transport, Android confirmation UI, iPhone acceptance, and recipient
   delivery have been verified.
 - Milestone 5 HFP call-control domain, AT encoding, WirePlumber Telephony D-Bus
-  adapter, authenticated API, and Android controls are implemented; no live
-  command has been sent to the iPhone.
+  adapter, authenticated API, and Android controls are implemented; live command
+  effects on the iPhone still require guided validation.
 - Milestone 6 in-memory audio bridge queues and aggregate instrumentation are
-  implemented alongside a framed-PCM diagnostic codec and bounded jitter buffer;
-  they are not yet connected to PipeWire or an Android transport.
+  implemented alongside a framed-PCM diagnostic codec, bounded jitter buffer,
+  PipeWire SCO discovery, managed `pw-cat` binding, and exact PCM frame adapters;
+  they are not yet connected to an Android network transport.
 - The server-side Android control plane now requires bearer authentication for all
   non-health endpoints and refuses startup without an explicit token.
 - An API-27 Android client foundation builds as a signed debug APK on the ARM64
@@ -64,7 +65,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
   call, audio, and Android-client states have validated transitions.
 - `VERIFIED_AUTOMATED`: Bluetooth-facing boundaries are mockable without hardware.
 - `VERIFIED_AUTOMATED`: `GET /api/v1/health` and `GET /api/v1/status` pass API tests.
-- `VERIFIED_AUTOMATED`: Rust formatting, Clippy with warnings denied, and 13 Rust tests pass.
+- `VERIFIED_AUTOMATED`: Rust formatting and Clippy with warnings denied pass across
+  the workspace.
 - `VERIFIED_AUTOMATED`: the existing 31-test Bash suite still passes.
 - `VERIFIED_AUTOMATED`: the daemon bound to loopback, returned both endpoints,
   and stopped cleanly on Ctrl-C during a local smoke test.
@@ -156,14 +158,21 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: Android sequence handling and bounded jitter behavior match
   the Pi policy, including the shared signed-63-bit wire range.
 - `VERIFIED_AUTOMATED`: privacy-safe PipeWire SCO discovery selects only official
-  source/sink factory identifiers and the validator emits only aggregate presence.
+  source/sink factory identifiers, retains the targetable numeric object serials,
+  and the validator emits only aggregate presence.
+- `VERIFIED_AUTOMATED`: managed `pw-cat` capture/playback commands bind the proper
+  SCO directions for narrowband and wideband HFP, stream through anonymous pipes,
+  and clean up partial starts and both child processes without logging stderr.
+- `VERIFIED_AUTOMATED`: PipeWire PCM adapters reconstruct short reads into exact
+  frames, preserve little-endian samples, reject truncated/mismatched frames, and
+  can transfer the two directions to independent workers.
 - `VERIFIED_AUTOMATED`: an inactive-by-default Android audio-device adapter builds
   with voice-communication routing, exact HFP frame sizes, blocking PCM I/O, and
   optional acoustic echo/noise processing.
 - `UNKNOWN`: Android microphone permission and real-device audio initialization,
   routing, frame timing, and intelligibility.
-- `UNKNOWN`: PipeWire node binding, codec conversion, network transport latency,
-  and intelligibility with real call audio.
+- `UNKNOWN`: live-call PipeWire process operation, network transport latency, and
+  intelligibility with real call audio.
 
 ### Control-plane security
 
@@ -183,8 +192,11 @@ bearer token and can perform privacy-safe health and authenticated status checks
   Android migration and explicit old-token revocation on daemon restart.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using
   Android Keystore AES/GCM and does not log tokens or response bodies.
-- `UNKNOWN`: enrollment issuance, rotation, revocation, TLS, and Keystore behavior
-  on the real Android 8.1 phone.
+- `VERIFIED_HARDWARE`: manual enrollment persistence, authenticated daemon access,
+  staged short-token testing, and certificate-pin UI behavior work on the real
+  Android 8.1 phone through the development ADB tunnel.
+- `UNKNOWN`: one-time enrollment issuance, automatic expiration, real LAN TLS,
+  and hardware-backed Keystore availability on this phone.
 
 ### Android client
 
@@ -194,9 +206,11 @@ bearer token and can perform privacy-safe health and authenticated status checks
   unsupported URL schemes.
 - `VERIFIED_HARDWARE`: the signed APK installs on the real Android 8.1/API 27
   phone, `MainActivity` launches successfully, and its process remains running.
-- `UNKNOWN`: visual UI behavior and Android Keystore enrollment on the real phone.
-- `UNKNOWN`: phone-to-Pi control-plane transport. The daemon remains intentionally
-  loopback-bound until a secure network design is implemented.
+- `VERIFIED_HARDWARE`: enrollment, hidden-token visibility toggle, health check,
+  authenticated status, and confirmed outbound-message UI behavior work on the
+  real phone.
+- `VERIFIED_HARDWARE`: phone-to-Pi control requests work through an ADB reverse
+  loopback tunnel. Direct LAN transport remains disabled until TLS is implemented.
 
 ### MAP
 

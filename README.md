@@ -4,10 +4,10 @@ A Raspberry Pi bridge that lets an Android 8.1 slider phone act as a companion d
 
 ## Status
 
-Milestone 0 feasibility and Milestone 1 backend foundations are complete.
-Milestone 2 contact synchronization is implemented for hardware-free testing and
-awaits a privacy-controlled iPhone validation. See `docs/current-state.md` for
-the authoritative project status.
+Milestone 0 Bluetooth feasibility is complete. Contact synchronization, inbound
+and outbound messaging, authenticated Android control, HFP call controls, and the
+PipeWire call-audio foundation are implemented at progressively validated stages.
+See `docs/current-state.md` for authoritative evidence and remaining hardware gates.
 
 ## Backend development
 
