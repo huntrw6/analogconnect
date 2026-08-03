@@ -50,6 +50,22 @@ The tool refuses existing or repository-local output, supports repeated `--host`
 arguments, creates a mode-`0600` key, and prints the leaf pin. Certificate rotation
 requires generating a new leaf and explicitly replacing the Android enrollment pin.
 
+## Address-independent discovery
+
+The Pi service template at `config/avahi/analogconnect.service` advertises
+`_analogconnect._tcp` on port 8787. Android 8.1 does not resolve `.local` names
+through its ordinary URL resolver on the target hardware, so the client must use
+`NsdManager` to resolve the service immediately before connecting. The resolved
+address is transport routing only: the enrolled leaf pin remains the trust anchor,
+and the certificate DNS identity comes from the resolved mDNS hostname rather than
+from the mutable IP address.
+
+- `DOCUMENTED`: Android API 16 and later provides `NsdManager` discovery and
+  per-service resolution callbacks.
+- `VERIFIED_HARDWARE`: direct `operat.local` URL resolution fails on the target
+  Android 8.1 phone even while the same phone can reach the Pi by IP.
+- `UNKNOWN`: Android NSD resolution and reconnect after a real DHCP address change.
+
 ## Staged token rotation
 
 1. Set the new credential as `ANALOGCONNECT_API_TOKEN`.
