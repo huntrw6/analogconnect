@@ -14,9 +14,9 @@ privacy-controlled procedures, then proceed to outgoing MAP and HFP call control
 `HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
 
 ## Last completed action
-Built and signature-verified the initial API-27 Android APK on the ARM64 Pi. The
-client uses Android Keystore AES/GCM for bearer-token storage and is ready for
-target-phone installation and launch validation.
+Installed and launched the signed API-27 APK on the real Android 8.1 phone. ADB
+reported successful installation and activity launch, and the app process remained
+running. No device identifier or application data was retained.
 
 ## Evidence
 
@@ -111,18 +111,18 @@ SCO cleanly torn down after hangup
 - Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
 
 ## Pending user actions
-- Connect the Android 8.1 phone over USB, enable USB debugging, and authorize this
-  Raspberry Pi when prompted. MAP notification and HFP command validation still
-  require guided iPhone interaction.
+- Confirm the Android UI is visible and exercise synthetic-token secure enrollment.
+  MAP notification and HFP command validation still require guided iPhone interaction.
 
 ## Next action
-Install and launch the signed debug APK on the Android 8.1 phone, then run a
-sanitized MAP notification lifecycle test and HFP commands with the iPhone.
+Validate the Android UI and Keystore enrollment with a synthetic token, design the
+secure phone-to-Pi transport, then continue sanitized iPhone hardware tests.
 
 ## Tests
 - test-diagnostics.sh: 31/31 passing
 - Rust unit/API tests: 13/13 passing
 - Android API-27 debug APK build and signature verification: passing
+- Android 8.1 hardware install, activity launch, and live-process check: passing
 - Cargo fmt: passing
 - Cargo Clippy with warnings denied: passing
 - Manual loopback daemon health/status and graceful-shutdown smoke test: passing

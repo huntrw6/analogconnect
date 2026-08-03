@@ -17,8 +17,8 @@ interpretations are superseded.
   implemented; they are not yet connected to PipeWire or an Android transport.
 - The server-side Android control plane now requires bearer authentication for all
   non-health endpoints and refuses startup without an explicit token.
-- An API-27 Android client foundation now builds as a signed debug APK on the
-  ARM64 Raspberry Pi; installation and launch on the target phone remain pending.
+- An API-27 Android client foundation builds as a signed debug APK on the ARM64
+  Raspberry Pi and installs and launches on the target Android 8.1 phone.
 
 ## Current architecture
 
@@ -142,9 +142,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
   aligns, signs, and passes APK signature verification on the Raspberry Pi.
 - `VERIFIED_AUTOMATED`: endpoint validation rejects embedded credentials and
   unsupported URL schemes.
-- `INFERRED`: platform-only UI and APIs are compatible with Android 8.1.
-- `BLOCKED`: installation and launch validation require an attached, USB-debugging
-  authorized Android phone; the latest ADB device scan returned no devices.
+- `VERIFIED_HARDWARE`: the signed APK installs on the real Android 8.1/API 27
+  phone, `MainActivity` launches successfully, and its process remains running.
+- `UNKNOWN`: visual UI behavior and Android Keystore enrollment on the real phone.
 - `UNKNOWN`: phone-to-Pi control-plane transport. The daemon remains intentionally
   loopback-bound until a secure network design is implemented.
 
@@ -179,7 +179,7 @@ bearer token and can perform privacy-safe health and authenticated status checks
   reconnects, and locked-device states; polling remains the safe default.
 - `UNKNOWN`: MAP sending, delivery state, MMS, attachments, and locked-iPhone behavior.
 - `UNKNOWN`: automatic recovery after reboot, Bluetooth loss, or network loss.
-- `UNKNOWN`: real-device Android launch, Keystore behavior, connectivity, and
+- `UNKNOWN`: real-device UI usability, Keystore behavior, connectivity, and
   end-to-end behavior.
 
 ## Superseded findings
@@ -223,7 +223,7 @@ iPhone using aggregate-only output. Do not deploy the daemon as a system service
 4. Hardware-verified outgoing MAP messages.
 5. Hardware-verified HFP call-control commands.
 6. Pi SCO audio bridge and transport benchmarks.
-7. Android API-27 control-plane application (foundation implemented; hardware and
-   transport validation pending).
+7. Android API-27 control-plane application (foundation installs and launches;
+   UI, secure enrollment, and transport validation pending).
 8. Android call audio.
 9. Full integration, recovery, security, deployment, and maintenance.
