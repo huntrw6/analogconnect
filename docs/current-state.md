@@ -289,9 +289,10 @@ bearer token and can perform privacy-safe health and authenticated status checks
   real phone.
 - `VERIFIED_HARDWARE`: phone-to-Pi control requests work over direct pinned LAN TLS
   after mDNS discovery and continue authenticating after endpoint replacement.
-- `VERIFIED_AUTOMATED`: an inactive API-27 Telecom `ConnectionService` and stable
-  managed `PhoneAccount` descriptor compile and package without registering or
-  taking control of calls.
+- `VERIFIED_AUTOMATED`: an API-27 Telecom `ConnectionService`, stable managed
+  `PhoneAccount`, explicit registration/removal switch, and calling-account settings
+  action compile and package. Install, launch, enrollment, and upgrade do not
+  register or enable the account.
 - `UNKNOWN`: compatibility of the target phone's vendor dialer with managed
   third-party Telecom calls; activation remains intentionally unavailable.
 

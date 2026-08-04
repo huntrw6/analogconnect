@@ -11,5 +11,7 @@
     <item name="start_call_audio" type="id" />
     <item name="stop_call_audio" type="id" />
     <item name="call_audio_speakerphone" type="id" />
+    <item name="phone_integration" type="id" />
+    <item name="phone_account_settings" type="id" />
     <item name="result" type="id" />
 </resources>

@@ -20,26 +20,28 @@ AnalogBridge will use a hybrid Android integration:
 
 The APK declares an `AnalogConnectionService` protected by Android's
 `BIND_TELECOM_CONNECTION_SERVICE` permission and can construct a stable managed
-`PhoneAccount` descriptor. It is intentionally not registered with
-`TelecomManager`; if Android invokes the service unexpectedly, it returns a fixed
-failure without reading or exposing a dialed address.
+`PhoneAccount` descriptor. An explicit experimental switch registers or removes
+the account, and a separate button opens Android's calling-account settings. The
+account does not become usable merely by registering it: Android still requires
+the user to enable it. If Android invokes the service before authenticated routing
+is implemented, it returns a fixed failure without reading or exposing a dialed
+address.
 
 - `VERIFIED_AUTOMATED`: the inactive service and phone-account descriptor compile
   against Android API 27 and package in the signed APK.
-- `DOCUMENTED`: Android Telecom registration requires an explicit future user
-  action and target-phone validation before AnalogBridge may handle calls.
+- `VERIFIED_AUTOMATED`: registration/removal and the calling-account settings
+  action compile behind explicit UI controls; no account is registered by install,
+  launch, enrollment, or upgrade.
 - `UNKNOWN`: whether this phone's vendor dialer presents managed third-party calls
   correctly, including incoming UI, audio routing, call history, and emergency-call
   isolation.
 
 ## Next safe steps
 
-1. Add an explicit experimental Phone integration toggle.
-2. Register the account only after confirmation and open Android's calling-account
-   settings for the user to enable it.
-3. Bridge aggregate incoming/active/ended state into a Telecom `Connection` without
+1. Hardware-test registration, removal, and the vendor calling-account settings.
+2. Bridge aggregate incoming/active/ended state into a Telecom `Connection` without
    placing phone numbers in diagnostics.
-4. Route Telecom answer, reject, disconnect, and DTMF callbacks through the existing
+3. Route Telecom answer, reject, disconnect, and DTMF callbacks through the existing
    authenticated call-command API.
-5. Hardware-test alongside ordinary cellular and emergency-call behavior before
+4. Hardware-test alongside ordinary cellular and emergency-call behavior before
    making the integration a default.

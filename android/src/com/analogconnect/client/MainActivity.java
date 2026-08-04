@@ -48,6 +48,8 @@ public final class MainActivity extends Activity {
     private Button startAudio;
     private Button stopAudio;
     private Switch speakerphone;
+    private AnalogPhoneIntegration phoneIntegration;
+    private boolean updatingPhoneIntegration;
     private AndroidCallAudioSession audioSession;
     private int audioGeneration;
     private final Runnable audioHealthCheck = new Runnable() {
@@ -95,6 +97,7 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         vault = new TokenVault(this);
         discovery = new NsdDiscovery(this);
+        phoneIntegration = new AnalogPhoneIntegration(this);
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -321,6 +324,52 @@ public final class MainActivity extends Activity {
             }
         });
         layout.addView(speakerphone);
+
+        TextView phoneIntegrationTitle = new TextView(this);
+        phoneIntegrationTitle.setText("Android Phone integration (experimental)");
+        phoneIntegrationTitle.setTextSize(20);
+        phoneIntegrationTitle.setPadding(0, dp(24), 0, dp(8));
+        layout.addView(phoneIntegrationTitle);
+
+        Switch phoneIntegrationSwitch = new Switch(this);
+        phoneIntegrationSwitch.setId(R.id.phone_integration);
+        phoneIntegrationSwitch.setText("Register AnalogBridge calling account");
+        phoneIntegrationSwitch.setChecked(phoneIntegration.isRegistered());
+        phoneIntegrationSwitch.setOnCheckedChangeListener(
+                new CompoundButton.OnCheckedChangeListener() {
+                    @Override public void onCheckedChanged(
+                            CompoundButton button, boolean checked) {
+                        if (updatingPhoneIntegration) {
+                            return;
+                        }
+                        try {
+                            phoneIntegration.setRegistered(checked);
+                            result.setText(checked
+                                    ? "AnalogBridge calling account registered; enable it in Android settings"
+                                    : "AnalogBridge calling account removed");
+                        } catch (RuntimeException error) {
+                            updatingPhoneIntegration = true;
+                            button.setChecked(phoneIntegration.isRegistered());
+                            updatingPhoneIntegration = false;
+                            result.setText("Phone integration failed: " + safeMessage(error));
+                        }
+                    }
+                });
+        layout.addView(phoneIntegrationSwitch);
+
+        Button phoneAccountSettings = new Button(this);
+        phoneAccountSettings.setId(R.id.phone_account_settings);
+        phoneAccountSettings.setText("Open calling account settings");
+        phoneAccountSettings.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                try {
+                    phoneIntegration.openCallingAccountSettings(MainActivity.this);
+                } catch (RuntimeException error) {
+                    result.setText("Calling account settings unavailable");
+                }
+            }
+        });
+        layout.addView(phoneAccountSettings);
 
         result = new TextView(this);
         result.setId(R.id.result);
