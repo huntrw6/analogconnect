@@ -1,5 +1,6 @@
-AnalogBridge A Pi bridge that lets an Android 8 device act as a companion phone.
-===========================================================================
+# AnalogBridge
+
+A Pi bridge that lets an Android 8 device act as a companion phone.
 
 The iPhone remains the cellular phone. A Raspberry Pi connects it to an Android
 8.1 phone over Bluetooth and secure local Wi-Fi.
