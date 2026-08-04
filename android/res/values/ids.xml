@@ -10,5 +10,6 @@
     <item name="check_daemon" type="id" />
     <item name="start_call_audio" type="id" />
     <item name="stop_call_audio" type="id" />
+    <item name="call_audio_speakerphone" type="id" />
     <item name="result" type="id" />
 </resources>

@@ -19,6 +19,7 @@ final class AndroidAudioDevice implements CallAudioPump.AudioIo {
     private final NoiseSuppressor noiseSuppressor;
     private int previousMode;
     private boolean previousSpeakerphone;
+    private boolean speakerphone;
     private volatile boolean started;
     private volatile boolean closed;
 
@@ -99,7 +100,7 @@ final class AndroidAudioDevice implements CallAudioPump.AudioIo {
         previousSpeakerphone = audioManager.isSpeakerphoneOn();
         try {
             audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            audioManager.setSpeakerphoneOn(false);
+            audioManager.setSpeakerphoneOn(speakerphone);
             player.play();
             if (player.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
                 throw new IllegalStateException("Call speaker did not start");
@@ -146,6 +147,21 @@ final class AndroidAudioDevice implements CallAudioPump.AudioIo {
         started = false;
         stopHardwareSafely();
         restoreRoutingSafely();
+    }
+
+    @Override
+    public synchronized void setSpeakerphone(boolean enabled) {
+        if (closed) {
+            throw new IllegalStateException("Call audio device is closed");
+        }
+        speakerphone = enabled;
+        if (started) {
+            try {
+                audioManager.setSpeakerphoneOn(enabled);
+            } catch (RuntimeException error) {
+                throw new IllegalStateException("Call audio routing failed");
+            }
+        }
     }
 
     private void restoreRouting() {

@@ -159,10 +159,11 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: Rust and Android API-27 packet codecs match a shared golden
   header vector without including sample values in diagnostics.
 - `VERIFIED_AUTOMATED`: Android sequence handling and bounded jitter behavior match
-  the Pi policy, including the shared signed-63-bit wire range.
-- `VERIFIED_AUTOMATED`: both platforms expose explicit 7.5 ms playout ticks;
-  pre-start polling is inert, while every empty post-start tick counts an underflow
-  and advances late-packet rejection consistently.
+  the shared signed-63-bit wire range and resynchronize toward recent audio if a
+  queue reaches its ceiling.
+- `VERIFIED_AUTOMATED`: Android holds an expected frame during an empty post-start
+  queue, conceals it without exposing samples, crossfades recovery, and applies
+  aggregate depth feedback plus bounded crossfaded latency trimming.
 - `VERIFIED_AUTOMATED`: privacy-safe PipeWire SCO discovery selects only official
   source/sink factory identifiers, retains the targetable numeric object serials,
   and the validator emits only aggregate presence.
@@ -197,10 +198,14 @@ bearer token and can perform privacy-safe health and authenticated status checks
   obtain a fresh media grant, start off the UI thread, monitor fixed pump failure
   codes, cancel stale starts, and stop audio whenever the activity leaves the
   foreground.
-- `UNKNOWN`: Android microphone permission and real-device audio initialization,
-  routing, frame timing, and intelligibility.
-- `UNKNOWN`: live-call PipeWire process operation, network transport latency, and
-  intelligibility with real call audio.
+- `VERIFIED_HARDWARE`: Android microphone capture, earpiece routing, speakerphone
+  routing, live PipeWire operation, authenticated media transport, and intelligible
+  audio in both directions work during real iPhone calls.
+- `VERIFIED_HARDWARE`: Pi downlink delivery showed zero drops and at most about
+  16 ms in-memory queueing during a sustained call; Android reported zero late and
+  overflow frames after adaptive resynchronization.
+- `INFERRED`: remaining periodic buffer growth is capture/playback clock mismatch,
+  not weak Wi-Fi. The bounded latency trimmer awaits sustained hardware testing.
 
 ### Control-plane security
 
@@ -310,7 +315,6 @@ bearer token and can perform privacy-safe health and authenticated status checks
 
 ## Unverified capabilities
 
-- `UNKNOWN`: human-confirmed intelligible call audio in either direction.
 - `UNKNOWN`: Pi-originated reject and dial, mute/gain behavior, and
   human-confirmed DTMF audibility.
 - `UNKNOWN`: MAP Message Notification Service behavior and reliable incremental sync.
@@ -321,9 +325,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `UNKNOWN`: MAP delivery-state notifications, MMS, attachments, sent-folder
   reflection, and locked-iPhone behavior.
 - `UNKNOWN`: automatic recovery after reboot, Bluetooth loss, or network loss.
-- `UNKNOWN`: real-device call-audio UI usability, media-session behavior, audio
-  routing, and end-to-end intelligibility; hardware-backed Keystore status also
-  remains unknown.
+- `UNKNOWN`: sustained-call quality with the latest bounded latency trimmer and
+  hardware-backed Keystore status.
 
 ## Superseded findings
 

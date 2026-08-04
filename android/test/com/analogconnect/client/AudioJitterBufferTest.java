@@ -6,8 +6,9 @@ public final class AudioJitterBufferTest {
         countsLossDuplicatesAndLatePackets();
         boundsFutureLatency();
         countsEmptyPlayoutUnderflowButNotPrestartPolling();
+        overflowResynchronizesToRecentAudio();
         rejectsInvalidCapacity();
-        System.out.println("ANDROID_JITTER_TESTS=PASS tests=5");
+        System.out.println("ANDROID_JITTER_TESTS=PASS tests=6");
     }
 
     private static AudioPacketCodec.Decoded packet(long sequence) throws Exception {
@@ -61,7 +62,20 @@ public final class AudioJitterBufferTest {
         assertTrue(buffer.tick() == null);
         assertTrue(buffer.summary().missing == 1);
         buffer.insert(packet(21));
-        assertTrue(buffer.summary().late == 1);
+        assertTrue(buffer.tick().sequence == 21);
+        assertTrue(buffer.summary().late == 0);
+    }
+
+    private static void overflowResynchronizesToRecentAudio() throws Exception {
+        AudioJitterBuffer buffer = new AudioJitterBuffer(2, 1);
+        buffer.insert(packet(10));
+        assertTrue(buffer.tick().sequence == 10);
+        buffer.insert(packet(100));
+        buffer.insert(packet(101));
+        buffer.insert(packet(102));
+        assertTrue(buffer.tick().sequence == 101);
+        assertTrue(buffer.tick().sequence == 102);
+        assertTrue(buffer.summary().overflow == 1);
     }
 
     private static void rejectsInvalidCapacity() {

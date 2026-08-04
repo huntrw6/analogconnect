@@ -13,7 +13,7 @@ import java.util.Base64;
 import java.util.Locale;
 
 final class WebSocketWire {
-    static final int MAX_PAYLOAD_BYTES = 512;
+    static final int MAX_PAYLOAD_BYTES = 264 * AudioPacketCodec.MAX_BATCH_FRAMES;
     static final int OPCODE_BINARY = 2;
     static final int OPCODE_CLOSE = 8;
     static final int OPCODE_PING = 9;

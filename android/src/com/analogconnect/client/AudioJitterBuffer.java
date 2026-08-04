@@ -38,10 +38,17 @@ final class AudioJitterBuffer {
         if (frames.size() == capacity) {
             overflow++;
             Map.Entry<Long, AudioPacketCodec.Decoded> furthest = frames.lastEntry();
-            if (sequence >= furthest.getKey()) {
+            if (sequence < furthest.getKey()) {
+                frames.remove(furthest.getKey());
+            } else {
+                frames.pollFirstEntry();
+                frames.put(sequence, packet);
+                if (started && !frames.isEmpty()
+                        && nextSequence != null && nextSequence < frames.firstKey()) {
+                    nextSequence = frames.firstKey();
+                }
                 return;
             }
-            frames.remove(furthest.getKey());
         }
         frames.put(sequence, packet);
     }
@@ -59,14 +66,28 @@ final class AudioJitterBuffer {
             return null;
         }
         long sequence = nextSequence;
-        nextSequence = sequence == Long.MAX_VALUE ? null : sequence + 1;
         AudioPacketCodec.Decoded packet = frames.remove(sequence);
         if (packet == null) {
             missing++;
+            // An entirely empty queue usually means clock drift or a late network burst.
+            // Hold the expected sequence so its audio is not discarded when it arrives.
+            if (frames.isEmpty()) {
+                return null;
+            }
+            nextSequence = sequence == Long.MAX_VALUE ? null : sequence + 1;
             return null;
         }
+        nextSequence = sequence == Long.MAX_VALUE ? null : sequence + 1;
         emitted++;
         return packet;
+    }
+
+    synchronized boolean hasStarted() {
+        return started;
+    }
+
+    synchronized AudioPacketCodec.Decoded peekNext() {
+        return nextSequence == null ? null : frames.get(nextSequence);
     }
 
     synchronized Summary summary() {

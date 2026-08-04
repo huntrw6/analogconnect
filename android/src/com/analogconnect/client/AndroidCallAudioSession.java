@@ -47,6 +47,22 @@ final class AndroidCallAudioSession implements AutoCloseable {
         return pump.jitterSummary();
     }
 
+    long concealedFrames() {
+        return pump.concealedFrames();
+    }
+
+    long pacingAdjustmentNanos() {
+        return pump.pacingAdjustmentNanos();
+    }
+
+    long trimmedFrames() {
+        return pump.trimmedFrames();
+    }
+
+    void setSpeakerphone(boolean enabled) {
+        pump.setSpeakerphone(enabled);
+    }
+
     @Override
     public void close() {
         pump.close();

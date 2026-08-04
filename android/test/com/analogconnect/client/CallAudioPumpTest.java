@@ -10,11 +10,30 @@ public final class CallAudioPumpTest {
 
     public static void main(String[] args) throws Exception {
         uplinkIsEncodedAndSequenced();
+        uplinkBatchesFourFrames();
         downlinkIsDecodedReorderedAndPlayed();
+        missingDownlinkFrameIsSmoothlyConcealed();
+        emptyQueueHoldsExpectedFrameAndAdaptsPacing();
+        sustainedBacklogIsTrimmedGradually();
         formatChangesFailClosed();
         diagnosticsContainNoSamplesOrTransportData();
         closeIsIdempotent();
+        speakerphoneRoutingDelegatesToAudioBoundary();
         System.out.println("ANDROID_AUDIO_PUMP_TESTS=PASS tests=" + tests);
+    }
+
+    private static void uplinkBatchesFourFrames() throws Exception {
+        FakeAudio audio = new FakeAudio(AudioPacketCodec.FORMAT_WIDEBAND);
+        FakeTransport transport = new FakeTransport();
+        CallAudioPump pump = new CallAudioPump(
+                audio, transport, AudioPacketCodec.FORMAT_WIDEBAND);
+        pump.captureBatch(20);
+        AudioPacketCodec.Decoded[] decoded =
+                AudioPacketCodec.decodeBatch(transport.sent.get(0));
+        assertEquals(4, decoded.length);
+        assertEquals(20, decoded[0].sequence);
+        assertEquals(23, decoded[3].sequence);
+        tests++;
     }
 
     private static void uplinkIsEncodedAndSequenced() throws Exception {
@@ -36,18 +55,20 @@ public final class CallAudioPumpTest {
                 audio, transport, AudioPacketCodec.FORMAT_WIDEBAND);
         transport.incoming.add(packet(11, AudioPacketCodec.FORMAT_WIDEBAND));
         transport.incoming.add(packet(10, AudioPacketCodec.FORMAT_WIDEBAND));
-        transport.incoming.add(packet(12, AudioPacketCodec.FORMAT_WIDEBAND));
-        pump.receiveOnce();
-        pump.receiveOnce();
-        pump.receiveOnce();
-        pump.playoutOnce();
-        pump.playoutOnce();
-        pump.playoutOnce();
-        assertEquals(3, audio.played.size());
+        for (long sequence = 12; sequence < 18; sequence++) {
+            transport.incoming.add(packet(sequence, AudioPacketCodec.FORMAT_WIDEBAND));
+        }
+        for (int index = 0; index < 8; index++) {
+            pump.receiveOnce();
+        }
+        for (int index = 0; index < 8; index++) {
+            pump.playoutOnce();
+        }
+        assertEquals(8, audio.played.size());
         assertEquals(10, audio.played.get(0).sequence);
         assertEquals(11, audio.played.get(1).sequence);
-        assertEquals(12, audio.played.get(2).sequence);
-        assertEquals(3, pump.jitterSummary().emitted);
+        assertEquals(17, audio.played.get(7).sequence);
+        assertEquals(8, pump.jitterSummary().emitted);
         tests++;
     }
 
@@ -64,6 +85,76 @@ public final class CallAudioPumpTest {
             assertFalse(expected.getMessage().contains("1"));
         }
         assertEquals(0, pump.jitterSummary().received);
+        tests++;
+    }
+
+    private static void sustainedBacklogIsTrimmedGradually() throws Exception {
+        FakeAudio audio = new FakeAudio(AudioPacketCodec.FORMAT_WIDEBAND);
+        FakeTransport transport = new FakeTransport();
+        CallAudioPump pump = new CallAudioPump(
+                audio, transport, AudioPacketCodec.FORMAT_WIDEBAND);
+        for (long sequence = 100; sequence < 120; sequence++) {
+            transport.incoming.add(packetWithSample(sequence, (short) sequence));
+            pump.receiveOnce();
+        }
+        pump.playoutOnce();
+        assertEquals(1, audio.played.size());
+        assertEquals(101, audio.played.get(0).sequence);
+        assertEquals(1, pump.trimmedFrames());
+        assertEquals(18, pump.jitterSummary().depth);
+        tests++;
+    }
+
+    private static void emptyQueueHoldsExpectedFrameAndAdaptsPacing() throws Exception {
+        FakeAudio audio = new FakeAudio(AudioPacketCodec.FORMAT_WIDEBAND);
+        FakeTransport transport = new FakeTransport();
+        CallAudioPump pump = new CallAudioPump(
+                audio, transport, AudioPacketCodec.FORMAT_WIDEBAND);
+        for (long sequence = 20; sequence < 24; sequence++) {
+            transport.incoming.add(packet(sequence, AudioPacketCodec.FORMAT_WIDEBAND));
+            pump.receiveOnce();
+        }
+        for (int index = 0; index < 5; index++) {
+            pump.playoutOnce();
+        }
+        assertEquals(5, audio.played.size());
+        assertTrue(pump.pacingAdjustmentNanos() > 0);
+        transport.incoming.add(packet(24, AudioPacketCodec.FORMAT_WIDEBAND));
+        pump.receiveOnce();
+        pump.playoutOnce();
+        assertEquals(24, audio.played.get(5).sequence);
+        assertEquals(0, pump.jitterSummary().late);
+        tests++;
+    }
+
+    private static void missingDownlinkFrameIsSmoothlyConcealed() throws Exception {
+        FakeAudio audio = new FakeAudio(AudioPacketCodec.FORMAT_WIDEBAND);
+        FakeTransport transport = new FakeTransport();
+        CallAudioPump pump = new CallAudioPump(
+                audio, transport, AudioPacketCodec.FORMAT_WIDEBAND);
+        transport.incoming.add(packetWithSample(10, (short) 1_000));
+        transport.incoming.add(packetWithSample(11, (short) 2_000));
+        transport.incoming.add(packetWithSample(14, (short) 5_000));
+        transport.incoming.add(packetWithSample(15, (short) 6_000));
+        for (int index = 0; index < 4; index++) {
+            pump.receiveOnce();
+        }
+        pump.playoutOnce();
+        pump.playoutOnce();
+        pump.playoutOnce();
+        transport.incoming.add(packetWithSample(13, (short) 4_000));
+        pump.receiveOnce();
+        pump.playoutOnce();
+        assertEquals(4, audio.played.size());
+        AudioPacketCodec.Decoded concealed = audio.played.get(2);
+        assertEquals(1, pump.concealedFrames());
+        assertEquals(1, pump.jitterSummary().missing);
+        assertTrue(concealed.samples[0] > 0);
+        assertTrue(concealed.samples[0] < 2_000);
+        assertEquals(0, concealed.samples[concealed.samples.length - 1]);
+        assertEquals(13, audio.played.get(3).sequence);
+        assertTrue(audio.played.get(3).samples[0] < 4_000);
+        assertEquals(4_000, audio.played.get(3).samples[23]);
         tests++;
     }
 
@@ -91,10 +182,28 @@ public final class CallAudioPumpTest {
         tests++;
     }
 
+    private static void speakerphoneRoutingDelegatesToAudioBoundary() {
+        FakeAudio audio = new FakeAudio(AudioPacketCodec.FORMAT_WIDEBAND);
+        CallAudioPump pump = new CallAudioPump(
+                audio, new FakeTransport(), AudioPacketCodec.FORMAT_WIDEBAND);
+        pump.setSpeakerphone(true);
+        assertTrue(audio.speakerphone);
+        pump.setSpeakerphone(false);
+        assertFalse(audio.speakerphone);
+        tests++;
+    }
+
     private static byte[] packet(long sequence, int format) throws Exception {
         int samples = format == AudioPacketCodec.FORMAT_WIDEBAND ? 120 : 60;
         return AudioPacketCodec.encode(format, sequence, sequence * 7_500,
                 new short[samples]);
+    }
+
+    private static byte[] packetWithSample(long sequence, short sample) throws Exception {
+        short[] samples = new short[120];
+        java.util.Arrays.fill(samples, sample);
+        return AudioPacketCodec.encode(AudioPacketCodec.FORMAT_WIDEBAND, sequence,
+                sequence * 7_500, samples);
     }
 
     private static final class FakeAudio implements CallAudioPump.AudioIo {
@@ -102,6 +211,7 @@ public final class CallAudioPumpTest {
         final List<AudioPacketCodec.Decoded> played = new ArrayList<>();
         int stopCalls;
         int closeCalls;
+        boolean speakerphone;
 
         FakeAudio(int format) {
             this.format = format;
@@ -118,6 +228,10 @@ public final class CallAudioPumpTest {
 
         @Override public void writeDownlink(AudioPacketCodec.Decoded packet) {
             played.add(packet);
+        }
+
+        @Override public void setSpeakerphone(boolean enabled) {
+            speakerphone = enabled;
         }
 
         @Override public void stop() {
@@ -160,6 +274,12 @@ public final class CallAudioPumpTest {
     private static void assertFalse(boolean value) {
         if (value) {
             throw new AssertionError("expected false");
+        }
+    }
+
+    private static void assertTrue(boolean value) {
+        if (!value) {
+            throw new AssertionError("expected true");
         }
     }
 }

@@ -952,6 +952,16 @@ impl BoundedAudioQueue {
             .map(|state| state.summary.clone())
             .map_err(|_| AudioQueueError::LockPoisoned)
     }
+
+    pub fn reset(&self) -> Result<(), AudioQueueError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| AudioQueueError::LockPoisoned)?;
+        state.frames.clear();
+        state.summary = AudioQueueSummary::default();
+        Ok(())
+    }
 }
 
 pub struct AudioBridge {
@@ -972,6 +982,11 @@ impl AudioBridge {
             uplink: self.uplink.summary()?,
             downlink: self.downlink.summary()?,
         })
+    }
+
+    pub fn reset(&self) -> Result<(), AudioQueueError> {
+        self.uplink.reset()?;
+        self.downlink.reset()
     }
 }
 
@@ -998,6 +1013,17 @@ mod tests {
         let summary = queue.summary().unwrap();
         assert_eq!(summary.dropped, 1);
         assert_eq!(summary.depth, 1);
+    }
+
+    #[test]
+    fn reset_discards_stale_frames_and_counters_between_calls() {
+        let bridge = AudioBridge::new(4).unwrap();
+        bridge.uplink.push(frame(1)).unwrap();
+        bridge.downlink.push(frame(2)).unwrap();
+        bridge.reset().unwrap();
+        assert_eq!(bridge.summary().unwrap(), AudioBridgeSummary::default());
+        assert!(bridge.uplink.pop().unwrap().is_none());
+        assert!(bridge.downlink.pop().unwrap().is_none());
     }
 
     #[test]

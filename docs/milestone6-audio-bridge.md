@@ -41,15 +41,15 @@ Sample buffers are never serialized, logged, or included in `Debug` output.
 - Little-endian signed 16-bit PCM payload with exact format-derived length.
 - Unknown versions/formats, reserved-bit changes, and malformed payloads fail closed.
 
-The jitter buffer reorders by sequence, waits for a bounded target depth, drops
-far-future frames on overflow, rejects late/duplicate frames, and reports only
+The jitter buffer reorders by sequence, waits for a bounded target depth, preserves
+recent audio and resynchronizes on overflow, rejects late/duplicate frames, and reports only
 aggregate received/emitted/lost/reordered-health counters.
 
 Playout is an explicit `tick`, not an unpaced queue poll. Before target depth is
-reached a tick does not advance state. Once started, callers tick exactly once per
-7.5 ms HFP frame; an absent frame advances the playout sequence and counts one
-missing-frame underflow even if the queue is empty. A later arrival for that slot
-is then correctly classified as late. Rust and Android implement the same rule.
+reached a tick does not advance state. Android holds the expected sequence while
+the queue is entirely empty, conceals the short underflow, and crossfades recovery.
+Confirmed gaps advance normally. Aggregate pacing and bounded frame trimming keep
+recent speech near a low target depth when capture and playback clocks differ.
 
 `FramedPcmMediaBridge` is the transport-neutral diagnostic seam. It encodes
 PipeWire downlink frames into ACAP packets and accepts uplink packet bytes only
@@ -65,13 +65,14 @@ one-time media token in `Authorization: Bearer ...` and its session identifier i
 `X-AnalogConnect-Session`. A grant permits one concurrent connection and has a
 60-second claim deadline. A connection claimed before that deadline remains valid
 for the call; reconnect is allowed only while the claim deadline remains valid.
-The upgrade parser and application both cap messages at 512 bytes.
+The upgrade parser and application both cap messages at 1,056 bytes: at most four
+strictly consecutive, same-format ACAP frames per message.
 
-Client-to-Pi binary messages are strict ACAP uplink packets. Malformed, oversized,
+Client-to-Pi binary messages are strict ACAP uplink batches. Malformed, oversized,
 text, or unexpected messages close the connection. Ping/pong is supported. Packet
 contents and credentials are neither logged nor persisted. Valid uplink packets
-enter the bridge's bounded uplink queue. At each 7.5 ms media tick, one queued
-downlink frame is encoded and sent to Android. Both directions feed the existing
+enter the bridge's bounded uplink queue. At each 15 ms media dispatch tick, available
+downlink frames are sent to Android in bounded four-frame batches. Both directions feed the existing
 privacy-safe aggregate queue counters. Attaching these queues to the live PipeWire
 workers is now performed for the lifetime of each authenticated stream.
 
@@ -108,7 +109,8 @@ session off the UI thread. Stop invalidates an in-flight start before closing th
 active session. Leaving the foreground always stops audio; destruction also closes
 any attached session before its executor exits. UI results use fixed diagnostics
 and never display media credentials.
-While active, a foreground health check reads only the pump's fixed error code.
+While active, a foreground health check reads only the pump's fixed error code and
+privacy-safe aggregate buffer, concealment, overflow, trim, and pacing counters.
 It automatically detaches and closes a failed or remotely ended session within
 500 ms, restores the start/stop controls, and never inspects audio samples.
 
@@ -186,6 +188,14 @@ owners so capture and playback workers do not share a lock or audio buffer.
   Normal teardown and a subsequent active call reset the watchdog.
 - `VERIFIED_HARDWARE`: active iPhone calls produced exactly one source/sink pair
   and an active gateway transport.
+- `VERIFIED_HARDWARE`: Android microphone audio reached the remote call clearly;
+  iPhone downlink was intelligible through both earpiece and speakerphone.
+- `VERIFIED_HARDWARE`: four-frame batching and 15 ms dispatch eliminated Pi-side
+  downlink drops; an observed call reported zero late/overflow Android frames and
+  remained intelligible instead of degrading over time.
+- `INFERRED`: remaining periodic Android buffer growth is capture/playback clock
+  mismatch, not Wi-Fi loss. A bounded crossfaded latency trimmer is automated-test
+  verified but awaits the next sustained hardware call.
 - `FAILED`: SCO remained active after one Pi-originated hangup and required an
   HFP-profile cycle; automatic recovery for this condition remains pending.
 

@@ -9,7 +9,46 @@ public final class AudioPacketCodecTest {
         rejectsMalformedPackets();
         matchesGoldenHeader();
         rejectsNegativeSequence();
-        System.out.println("ANDROID_AUDIO_TESTS=PASS tests=5");
+        batchesFourConsecutiveFrames();
+        rejectsMalformedBatches();
+        System.out.println("ANDROID_AUDIO_TESTS=PASS tests=7");
+    }
+
+    private static void batchesFourConsecutiveFrames() throws Exception {
+        AudioPacketCodec.Decoded[] frames = new AudioPacketCodec.Decoded[4];
+        for (int index = 0; index < frames.length; index++) {
+            frames[index] = new AudioPacketCodec.Decoded(
+                    AudioPacketCodec.FORMAT_WIDEBAND, 10 + index,
+                    1_000 + index * 7_500, new short[120]);
+        }
+        byte[] encoded = AudioPacketCodec.encodeBatch(frames);
+        assertTrue(encoded.length == 4 * 264);
+        AudioPacketCodec.Decoded[] decoded = AudioPacketCodec.decodeBatch(encoded);
+        assertTrue(decoded.length == 4);
+        assertTrue(decoded[0].sequence == 10);
+        assertTrue(decoded[3].sequence == 13);
+    }
+
+    private static void rejectsMalformedBatches() throws Exception {
+        AudioPacketCodec.Decoded first = new AudioPacketCodec.Decoded(
+                AudioPacketCodec.FORMAT_WIDEBAND, 1, 0, new short[120]);
+        AudioPacketCodec.Decoded skipped = new AudioPacketCodec.Decoded(
+                AudioPacketCodec.FORMAT_WIDEBAND, 3, 0, new short[120]);
+        try {
+            AudioPacketCodec.encodeBatch(new AudioPacketCodec.Decoded[] {first, skipped});
+            throw new AssertionError("expected batch sequence rejection");
+        } catch (AudioPacketCodec.PacketException expected) {
+            // Expected.
+        }
+        byte[] packet = AudioPacketCodec.encode(
+                AudioPacketCodec.FORMAT_WIDEBAND, 1, 0, new short[120]);
+        byte[] malformed = Arrays.copyOf(packet, packet.length + 1);
+        try {
+            AudioPacketCodec.decodeBatch(malformed);
+            throw new AssertionError("expected malformed batch rejection");
+        } catch (AudioPacketCodec.PacketException expected) {
+            // Expected.
+        }
     }
 
     private static void roundTrips(int format, int count) throws Exception {

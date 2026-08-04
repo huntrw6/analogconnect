@@ -47,6 +47,7 @@ public final class MainActivity extends Activity {
     private NsdDiscovery discovery;
     private Button startAudio;
     private Button stopAudio;
+    private Switch speakerphone;
     private AndroidCallAudioSession audioSession;
     private int audioGeneration;
     private final Runnable audioHealthCheck = new Runnable() {
@@ -60,6 +61,16 @@ public final class MainActivity extends Activity {
             }
             String errorCode = current.errorCode();
             if (errorCode == null) {
+                AudioJitterBuffer.Summary audio = current.jitterSummary();
+                long pacingPartsPerMillion = current.pacingAdjustmentNanos() * 1_000_000L
+                        / 7_500_000L;
+                result.setText("Call audio active · buffer " + audio.depth
+                        + " · holds " + current.concealedFrames()
+                        + " · late " + audio.late
+                        + " · overflow " + audio.overflow
+                        + " · trims " + current.trimmedFrames()
+                        + " · pace " + (pacingPartsPerMillion >= 0 ? "+" : "")
+                        + pacingPartsPerMillion + " ppm");
                 mainHandler.postDelayed(this, 500);
                 return;
             }
@@ -300,6 +311,17 @@ public final class MainActivity extends Activity {
         });
         layout.addView(stopAudio);
 
+        speakerphone = new Switch(this);
+        speakerphone.setId(R.id.call_audio_speakerphone);
+        speakerphone.setText("Speakerphone");
+        speakerphone.setChecked(false);
+        speakerphone.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton button, boolean checked) {
+                setCallAudioSpeakerphone(checked);
+            }
+        });
+        layout.addView(speakerphone);
+
         result = new TextView(this);
         result.setId(R.id.result);
         result.setText("Not checked");
@@ -498,6 +520,7 @@ public final class MainActivity extends Activity {
         final String endpointValue = endpoint.getText().toString().trim();
         final String pinValue = certificatePin.getText().toString().trim();
         final String tlsNameValue = tlsName.getText().toString().trim();
+        final boolean speakerphoneValue = speakerphone.isChecked();
         audioExecutor.execute(new Runnable() {
             @Override public void run() {
                 AndroidCallAudioSession created = null;
@@ -509,6 +532,7 @@ public final class MainActivity extends Activity {
                             .createMediaSession(endpointValue, savedToken);
                     created = AndroidCallAudioSession.connect(getApplicationContext(),
                             endpointValue, pinValue, tlsNameValue, credentials);
+                    created.setSpeakerphone(speakerphoneValue);
                     created.start();
                     synchronized (audioLock) {
                         if (generation == audioGeneration && audioSession == null) {
@@ -540,6 +564,31 @@ public final class MainActivity extends Activity {
                         }
                     }
                 });
+            }
+        });
+    }
+
+    private void setCallAudioSpeakerphone(final boolean enabled) {
+        final AndroidCallAudioSession current;
+        synchronized (audioLock) {
+            current = audioSession;
+        }
+        if (current == null) {
+            return;
+        }
+        audioExecutor.execute(new Runnable() {
+            @Override public void run() {
+                try {
+                    current.setSpeakerphone(enabled);
+                } catch (RuntimeException error) {
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            if (!isFinishing()) {
+                                result.setText("Call audio routing failed");
+                            }
+                        }
+                    });
+                }
             }
         });
     }

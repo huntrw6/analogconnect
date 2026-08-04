@@ -117,7 +117,7 @@ impl AppState {
             contact_summary: Arc::new(RwLock::new(ContactSummary::default())),
             message_summary: Arc::new(RwLock::new(MessageSyncSummary::default())),
             audio_bridge: Arc::new(
-                AudioBridge::new(8).expect("fixed audio queue capacity is valid"),
+                AudioBridge::new(64).expect("fixed audio queue capacity is valid"),
             ),
             auth_tokens: Arc::new(auth_tokens),
             message_sender,
@@ -423,9 +423,11 @@ async fn create_audio_session(
 }
 
 const MEDIA_SESSION_HEADER: &str = "x-analogconnect-session";
-const MAX_MEDIA_PACKET_BYTES: usize = 512;
+const MAX_MEDIA_FRAMES_PER_MESSAGE: usize = 4;
+const MAX_MEDIA_PACKET_BYTES: usize = 264;
+const MAX_MEDIA_MESSAGE_BYTES: usize = MAX_MEDIA_PACKET_BYTES * MAX_MEDIA_FRAMES_PER_MESSAGE;
 
-trait ActiveMedia: Send {
+trait ActiveMedia: Send + Sync {
     fn failure_code(&self) -> Option<&'static str>;
 }
 
@@ -466,8 +468,8 @@ async fn open_audio_stream(
     let audio_bridge = Arc::clone(&state.audio_bridge);
     let media_backend = Arc::clone(&state.media_backend);
     Ok(upgrade
-        .max_message_size(MAX_MEDIA_PACKET_BYTES)
-        .max_frame_size(MAX_MEDIA_PACKET_BYTES)
+        .max_message_size(MAX_MEDIA_MESSAGE_BYTES)
+        .max_frame_size(MAX_MEDIA_MESSAGE_BYTES)
         .on_upgrade(move |socket| media_socket(socket, lease, audio_bridge, media_backend)))
 }
 
@@ -496,6 +498,11 @@ async fn media_socket(
     audio_bridge: Arc<AudioBridge>,
     media_backend: Arc<dyn MediaBackend>,
 ) {
+    if audio_bridge.reset().is_err() {
+        let mut socket = socket;
+        let _ = socket.send(Message::Close(None)).await;
+        return;
+    }
     let live_bridge = match media_backend.start(Arc::clone(&audio_bridge)) {
         Ok(bridge) => bridge,
         Err(_) => {
@@ -506,75 +513,138 @@ async fn media_socket(
     };
     let (mut sender, mut receiver) = socket.split();
     let media_started = Instant::now();
-    let mut playout = tokio::time::interval(Duration::from_micros(7_500));
-    playout.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    while lease.is_active() {
-        tokio::select! {
-            message = receiver.next() => match message {
-                Some(Ok(Message::Binary(packet))) if packet.len() <= MAX_MEDIA_PACKET_BYTES => {
+    let (control_sender, mut control_receiver) = tokio::sync::mpsc::channel(4);
+    let receive_loop = async {
+        while lease.is_active() {
+            match receiver.next().await {
+                Some(Ok(Message::Binary(packet))) if packet.len() <= MAX_MEDIA_MESSAGE_BYTES => {
                     if receive_uplink_packet(&audio_bridge, &packet).is_err() {
-                        let _ = sender.send(Message::Close(None)).await;
                         break;
                     }
                 }
                 Some(Ok(Message::Ping(payload))) => {
-                    if sender.send(Message::Pong(payload)).await.is_err() {
+                    if control_sender.send(Message::Pong(payload)).await.is_err() {
                         break;
                     }
                 }
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
-                Some(Ok(_)) => {
-                    let _ = sender.send(Message::Close(None)).await;
-                    break;
+                Some(Ok(_)) => break,
+            }
+        }
+    };
+    let send_loop = async {
+        let mut playout = tokio::time::interval(Duration::from_micros(15_000));
+        playout.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        while lease.is_active() {
+            tokio::select! {
+                control = control_receiver.recv() => {
+                    let Some(control) = control else { break };
+                    if sender.send(control).await.is_err() {
+                        break;
+                    }
                 }
-            },
-            _ = playout.tick() => {
+                _ = playout.tick() => {
                 if live_bridge.failure_code().is_some() {
                     let _ = sender.send(Message::Close(None)).await;
                     break;
                 }
-                match take_downlink_packet(&audio_bridge, media_started.elapsed()) {
-                    Ok(Some(packet)) => {
-                        if sender.send(Message::Binary(packet.into())).await.is_err() {
-                            break;
+                for _ in 0..16 {
+                    match take_downlink_batch(&audio_bridge, media_started.elapsed()) {
+                        Ok(Some(packet)) => {
+                            if sender.send(Message::Binary(packet.into())).await.is_err() {
+                                return;
+                            }
                         }
-                    }
-                    Ok(_) => {}
-                    Err(_) => {
-                        let _ = sender.send(Message::Close(None)).await;
-                        break;
+                        Ok(None) => break,
+                        Err(_) => {
+                            let _ = sender.send(Message::Close(None)).await;
+                            return;
+                        }
                     }
                 }
             }
+            }
         }
-    }
+    };
+    tokio::select! {
+        () = receive_loop => {}
+        () = send_loop => {}
+    };
 }
 
 fn receive_uplink_packet(bridge: &AudioBridge, bytes: &[u8]) -> Result<(), MediaStreamError> {
-    let packet = analogconnect_core::AudioPacket::decode(bytes)
-        .map_err(|_| MediaStreamError::InvalidPacket)?;
-    bridge
-        .uplink
-        .push(packet.frame().clone())
-        .map_err(|_| MediaStreamError::QueueUnavailable)
+    let frames = decode_audio_batch(bytes)?;
+    for frame in frames {
+        bridge
+            .uplink
+            .push(frame)
+            .map_err(|_| MediaStreamError::QueueUnavailable)?;
+    }
+    Ok(())
 }
 
-fn take_downlink_packet(
+fn decode_audio_batch(
+    bytes: &[u8],
+) -> Result<Vec<analogconnect_core::AudioFrame>, MediaStreamError> {
+    let mut frames = Vec::with_capacity(MAX_MEDIA_FRAMES_PER_MESSAGE);
+    let mut offset = 0;
+    let mut expected_format = None;
+    let mut expected_sequence = None;
+    while offset < bytes.len() && frames.len() < MAX_MEDIA_FRAMES_PER_MESSAGE {
+        if bytes.len() - offset < 6 {
+            return Err(MediaStreamError::InvalidPacket);
+        }
+        let packet_bytes = match bytes[offset + 5] {
+            1 => 144,
+            2 => 264,
+            _ => return Err(MediaStreamError::InvalidPacket),
+        };
+        let end = offset
+            .checked_add(packet_bytes)
+            .filter(|end| *end <= bytes.len())
+            .ok_or(MediaStreamError::InvalidPacket)?;
+        let packet = analogconnect_core::AudioPacket::decode(&bytes[offset..end])
+            .map_err(|_| MediaStreamError::InvalidPacket)?;
+        if expected_format.is_some_and(|format| format != packet.frame().format())
+            || expected_sequence.is_some_and(|sequence| sequence != packet.frame().sequence())
+        {
+            return Err(MediaStreamError::InvalidPacket);
+        }
+        expected_format = Some(packet.frame().format());
+        expected_sequence = packet.frame().sequence().checked_add(1);
+        if expected_sequence.is_none() && end != bytes.len() {
+            return Err(MediaStreamError::InvalidPacket);
+        }
+        frames.push(packet.frame().clone());
+        offset = end;
+    }
+    if frames.is_empty() || offset != bytes.len() {
+        return Err(MediaStreamError::InvalidPacket);
+    }
+    Ok(frames)
+}
+
+fn take_downlink_batch(
     bridge: &AudioBridge,
     capture_time: Duration,
 ) -> Result<Option<Vec<u8>>, MediaStreamError> {
-    let Some(frame) = bridge
-        .downlink
-        .pop()
-        .map_err(|_| MediaStreamError::QueueUnavailable)?
-    else {
-        return Ok(None);
-    };
     let capture_time_micros = u64::try_from(capture_time.as_micros()).unwrap_or(u64::MAX);
-    analogconnect_core::AudioPacket::new(capture_time_micros, frame)
-        .encode()
-        .map(Some)
-        .map_err(|_| MediaStreamError::InvalidPacket)
+    let mut batch = Vec::with_capacity(MAX_MEDIA_MESSAGE_BYTES);
+    for _ in 0..MAX_MEDIA_FRAMES_PER_MESSAGE {
+        let Some(frame) = bridge
+            .downlink
+            .pop()
+            .map_err(|_| MediaStreamError::QueueUnavailable)?
+        else {
+            break;
+        };
+        batch.extend_from_slice(
+            &analogconnect_core::AudioPacket::new(capture_time_micros, frame)
+                .encode()
+                .map_err(|_| MediaStreamError::InvalidPacket)?,
+        );
+    }
+    Ok((!batch.is_empty()).then_some(batch))
 }
 
 #[derive(Debug)]
@@ -1210,14 +1280,14 @@ mod tests {
         let downlink =
             AudioFrame::new(8, format, vec![0; usize::from(format.samples_per_channel)]).unwrap();
         bridge.downlink.push(downlink.clone()).unwrap();
-        let encoded = take_downlink_packet(&bridge, Duration::from_micros(22_000))
+        let encoded = take_downlink_batch(&bridge, Duration::from_micros(22_000))
             .unwrap()
             .unwrap();
         let decoded = AudioPacket::decode(&encoded).unwrap();
         assert_eq!(decoded.capture_time_micros(), 22_000);
         assert_eq!(decoded.frame(), &downlink);
         assert!(
-            take_downlink_packet(&bridge, Duration::from_micros(30_000))
+            take_downlink_batch(&bridge, Duration::from_micros(30_000))
                 .unwrap()
                 .is_none()
         );
@@ -1317,7 +1387,71 @@ mod tests {
         };
         assert_eq!(AudioPacket::decode(&bytes).unwrap().frame(), &downlink);
 
-        socket.close(None).await.unwrap();
+        let (mut upload_socket, mut download_socket) = socket.split();
+        let upload = async {
+            let mut interval = tokio::time::interval(Duration::from_micros(30_000));
+            for batch_index in 0..20_u64 {
+                interval.tick().await;
+                let mut batch = Vec::new();
+                for offset in 0..4_u64 {
+                    let sequence = 100 + batch_index * 4 + offset;
+                    let frame = AudioFrame::new(
+                        sequence,
+                        format,
+                        vec![0; usize::from(format.samples_per_channel)],
+                    )
+                    .unwrap();
+                    batch.extend_from_slice(
+                        &AudioPacket::new(sequence * 7_500, frame).encode().unwrap(),
+                    );
+                }
+                upload_socket
+                    .send(ClientMessage::Binary(batch.into()))
+                    .await
+                    .unwrap();
+            }
+        };
+        let produce = async {
+            let mut interval = tokio::time::interval(Duration::from_millis(240));
+            for burst in 0..3_u64 {
+                interval.tick().await;
+                for offset in 0..32_u64 {
+                    let sequence = 200 + burst * 32 + offset;
+                    state
+                        .audio_bridge
+                        .downlink
+                        .push(
+                            AudioFrame::new(
+                                sequence,
+                                format,
+                                vec![0; usize::from(format.samples_per_channel)],
+                            )
+                            .unwrap(),
+                        )
+                        .unwrap();
+                }
+            }
+        };
+        let download = async {
+            let mut received_frames = 0;
+            while received_frames < 70 {
+                match download_socket.next().await {
+                    Some(Ok(ClientMessage::Binary(bytes))) => {
+                        received_frames += decode_audio_batch(&bytes).unwrap().len();
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(error)) => panic!("sustained downlink failed: {error}"),
+                    None => break,
+                }
+            }
+            received_frames
+        };
+        let (_, _, sustained_downlink) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(upload, produce, download)
+        })
+        .await
+        .unwrap();
+        assert!(sustained_downlink >= 70);
         server.abort();
     }
 
