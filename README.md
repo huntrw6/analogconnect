@@ -1,13 +1,24 @@
-# AnalogConnect
+AnalogBridge A Pi bridge that lets an Android 8 device act as a companion phone.
+===========================================================================
 
-A Raspberry Pi bridge that lets an Android 8.1 slider phone act as a companion device for a nearby iPhone.
+The iPhone remains the cellular phone. A Raspberry Pi connects it to an Android
+8.1 phone over Bluetooth and secure local Wi-Fi.
 
-## Status
+## Current capabilities
 
-Milestone 0 Bluetooth feasibility is complete. Contact synchronization, inbound
-and outbound messaging, authenticated Android control, HFP call controls, and the
-PipeWire call-audio foundation are implemented at progressively validated stages.
-See `docs/current-state.md` for authoritative evidence and remaining hardware gates.
+- Connects a Raspberry Pi to an iPhone for contacts, messages, calls, and call audio.
+- Lets the Android phone send a message through the iPhone.
+- Shows iPhone call state and provides answer, reject, hang-up, dial, DTMF, and mute controls.
+- Carries live microphone and call audio in both directions.
+- Supports earpiece and speakerphone playback on Android.
+- Automatically discovers the Pi again when its local network address changes.
+- Protects Pi-to-Android traffic with HTTPS certificate pinning and authentication.
+- Keeps credentials, message contents, contact details, phone numbers, and audio out of logs.
+
+Real-device testing has verified message delivery, call controls, two-way intelligible
+audio, speakerphone routing, and automatic Pi address rediscovery. Sustained-call
+latency and audio smoothing are still being tuned. See
+[`docs/current-state.md`](docs/current-state.md) for detailed evidence and remaining work.
 
 ## Backend development
 
@@ -39,4 +50,4 @@ HTTPS configuration required before binding to a LAN address.
 
 ## License
 
-MIT
+GNU General Public License v3.0. See [`LICENSE`](LICENSE).
