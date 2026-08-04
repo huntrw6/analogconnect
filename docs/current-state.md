@@ -25,6 +25,9 @@ interpretations are superseded.
   non-health endpoints and refuses startup without an explicit token.
 - An API-27 Android client foundation builds as a signed debug APK on the ARM64
   Raspberry Pi and installs and launches on the target Android 8.1 phone.
+- Android system integration follows a hybrid design: native Contacts through a
+  future sync account, an inactive fail-closed Telecom call-provider experiment,
+  and a dedicated AnalogBridge conversation UI for bridged messages.
 
 ## Current architecture
 
@@ -286,6 +289,11 @@ bearer token and can perform privacy-safe health and authenticated status checks
   real phone.
 - `VERIFIED_HARDWARE`: phone-to-Pi control requests work over direct pinned LAN TLS
   after mDNS discovery and continue authenticating after endpoint replacement.
+- `VERIFIED_AUTOMATED`: an inactive API-27 Telecom `ConnectionService` and stable
+  managed `PhoneAccount` descriptor compile and package without registering or
+  taking control of calls.
+- `UNKNOWN`: compatibility of the target phone's vendor dialer with managed
+  third-party Telecom calls; activation remains intentionally unavailable.
 
 ### MAP
 
