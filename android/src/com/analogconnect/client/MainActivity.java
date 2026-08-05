@@ -24,10 +24,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
-    private static final String DEFAULT_ENDPOINT = "http://127.0.0.1:8787";
-    private static final String ENDPOINT_KEY = "endpoint";
-    private static final String CERTIFICATE_PIN_KEY = "certificate_pin";
-    private static final String TLS_NAME_KEY = "tls_name";
     private static final int RECORD_AUDIO_PERMISSION_REQUEST = 41;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -45,6 +41,7 @@ public final class MainActivity extends Activity {
     private TextView result;
     private TokenVault vault;
     private NsdDiscovery discovery;
+    private EnrollmentSettings settings;
     private Button startAudio;
     private Button stopAudio;
     private Switch speakerphone;
@@ -97,6 +94,8 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         vault = new TokenVault(this);
         discovery = new NsdDiscovery(this);
+        settings = new EnrollmentSettings(this);
+        settings.migrateLegacy(getPreferences(MODE_PRIVATE));
         phoneIntegration = new AnalogPhoneIntegration(this);
 
         LinearLayout layout = new LinearLayout(this);
@@ -121,7 +120,7 @@ public final class MainActivity extends Activity {
         endpoint.setId(R.id.endpoint);
         endpoint.setHint("Daemon endpoint");
         endpoint.setSingleLine(true);
-        endpoint.setText(getPreferences(MODE_PRIVATE).getString(ENDPOINT_KEY, DEFAULT_ENDPOINT));
+        endpoint.setText(settings.endpoint());
         layout.addView(endpoint);
 
         Button discover = new Button(this);
@@ -136,15 +135,14 @@ public final class MainActivity extends Activity {
         tlsName.setId(R.id.tls_name);
         tlsName.setHint("TLS server name");
         tlsName.setSingleLine(true);
-        tlsName.setText(getPreferences(MODE_PRIVATE).getString(TLS_NAME_KEY, ""));
+        tlsName.setText(settings.tlsName());
         layout.addView(tlsName);
 
         certificatePin = new EditText(this);
         certificatePin.setId(R.id.certificate_pin);
         certificatePin.setHint("HTTPS certificate SHA-256 pin");
         certificatePin.setSingleLine(true);
-        certificatePin.setText(getPreferences(MODE_PRIVATE)
-                .getString(CERTIFICATE_PIN_KEY, ""));
+        certificatePin.setText(settings.certificatePin());
         layout.addView(certificatePin);
 
         token = new EditText(this);
@@ -396,11 +394,7 @@ public final class MainActivity extends Activity {
             if (!tokenValue.isEmpty()) {
                 vault.store(tokenValue);
             }
-            getPreferences(MODE_PRIVATE).edit()
-                    .putString(ENDPOINT_KEY, endpointValue)
-                    .putString(CERTIFICATE_PIN_KEY, pinValue)
-                    .putString(TLS_NAME_KEY, tlsName.getText().toString().trim())
-                    .apply();
+            settings.save(endpointValue, pinValue, tlsName.getText().toString().trim());
             token.setText("");
             result.setText("Enrollment saved securely");
         } catch (Exception error) {
@@ -694,8 +688,7 @@ public final class MainActivity extends Activity {
     }
 
     private ApiClient apiClient() throws Exception {
-        return new ApiClient(getPreferences(MODE_PRIVATE).getString(CERTIFICATE_PIN_KEY, ""),
-                getPreferences(MODE_PRIVATE).getString(TLS_NAME_KEY, ""));
+        return new ApiClient(settings.certificatePin(), settings.tlsName());
     }
 
     private void discoverDaemon() {
@@ -706,10 +699,7 @@ public final class MainActivity extends Activity {
                     @Override public void run() {
                         endpoint.setText(value);
                         tlsName.setText(identity);
-                        getPreferences(MODE_PRIVATE).edit()
-                                .putString(ENDPOINT_KEY, value)
-                                .putString(TLS_NAME_KEY, identity)
-                                .apply();
+                        settings.save(value, certificatePin.getText().toString().trim(), identity);
                         result.setText("Daemon discovered");
                     }
                 });

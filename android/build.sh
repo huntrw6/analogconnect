@@ -43,6 +43,7 @@ javac -d "$test_classes_dir" \
     "$script_dir/src/com/analogconnect/client/MediaSessionCredentials.java" \
     "$script_dir/src/com/analogconnect/client/WebSocketWire.java" \
     "$script_dir/src/com/analogconnect/client/CallAudioPump.java" \
+    "$script_dir/src/com/analogconnect/client/TelecomDialTarget.java" \
     "$script_dir/test/com/analogconnect/client/EndpointTest.java" \
     "$script_dir/test/com/analogconnect/client/AudioPacketCodecTest.java" \
     "$script_dir/test/com/analogconnect/client/AudioJitterBufferTest.java" \
@@ -51,7 +52,8 @@ javac -d "$test_classes_dir" \
     "$script_dir/test/com/analogconnect/client/AudioDeviceConfigTest.java" \
     "$script_dir/test/com/analogconnect/client/MediaSessionCredentialsTest.java" \
     "$script_dir/test/com/analogconnect/client/WebSocketWireTest.java" \
-    "$script_dir/test/com/analogconnect/client/CallAudioPumpTest.java"
+    "$script_dir/test/com/analogconnect/client/CallAudioPumpTest.java" \
+    "$script_dir/test/com/analogconnect/client/TelecomDialTargetTest.java"
 java -cp "$test_classes_dir" com.analogconnect.client.EndpointTest
 java -cp "$test_classes_dir" com.analogconnect.client.AudioPacketCodecTest
 java -cp "$test_classes_dir" com.analogconnect.client.AudioJitterBufferTest
@@ -61,6 +63,7 @@ java -cp "$test_classes_dir" com.analogconnect.client.AudioDeviceConfigTest
 java -cp "$test_classes_dir" com.analogconnect.client.MediaSessionCredentialsTest
 java -cp "$test_classes_dir" com.analogconnect.client.WebSocketWireTest
 java -cp "$test_classes_dir" com.analogconnect.client.CallAudioPumpTest
+java -cp "$test_classes_dir" com.analogconnect.client.TelecomDialTargetTest
 
 aapt package -f -m -J "$generated_dir" -M "$script_dir/AndroidManifest.xml" \
     -S "$script_dir/res" -I "$platform_jar"

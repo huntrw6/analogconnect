@@ -47,6 +47,36 @@ final class ApiClient {
         return request(Endpoint.parse(endpoint, "/api/v1/status"), token);
     }
 
+    String callState(String endpoint, String token) throws IOException {
+        if (token == null || token.isEmpty()) {
+            throw new IOException("Enrollment token is missing");
+        }
+        HttpURLConnection connection = open(Endpoint.parse(endpoint, "/api/v1/status"));
+        connection.setConnectTimeout(TIMEOUT_MS);
+        connection.setReadTimeout(TIMEOUT_MS);
+        connection.setRequestMethod("GET");
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Authorization", "Bearer " + token);
+        try {
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new IOException("Daemon returned HTTP " + status);
+            }
+            JSONObject json = new JSONObject(new String(
+                    readBounded(connection.getInputStream(), 4096), StandardCharsets.UTF_8));
+            String call = json.getString("call");
+            if (!("idle".equals(call) || "dialing".equals(call) || "incoming".equals(call)
+                    || "active".equals(call) || "ended".equals(call) || "error".equals(call))) {
+                throw new IOException("Daemon call state is invalid");
+            }
+            return call;
+        } catch (JSONException error) {
+            throw new IOException("Daemon status response is invalid");
+        } finally {
+            connection.disconnect();
+        }
+    }
+
     int sendMessage(String endpoint, String token, String recipient, String body)
             throws IOException {
         if (token == null || token.isEmpty()) {

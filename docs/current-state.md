@@ -294,7 +294,14 @@ bearer token and can perform privacy-safe health and authenticated status checks
   action compile and package. Install, launch, enrollment, and upgrade do not
   register or enable the account.
 - `UNKNOWN`: compatibility of the target phone's vendor dialer with managed
-  third-party Telecom calls; activation remains intentionally unavailable.
+  third-party Telecom calls; registration is opt-in and has not been enabled in a
+  hardware test.
+- `VERIFIED_AUTOMATED`: the opt-in outgoing Telecom path validates and redacts the
+  target, uses the Keystore enrollment and pinned API, monitors aggregate call
+  state, keeps DTMF/hang-up off the monitor thread, starts one-time authenticated
+  call audio, follows the system speaker route, and tears down idempotently.
+- `UNKNOWN`: real Contacts-to-AnalogBridge dialing and Telecom-owned audio; the
+  outgoing-routing APK awaits an operator-available deployment window.
 
 ### MAP
 
