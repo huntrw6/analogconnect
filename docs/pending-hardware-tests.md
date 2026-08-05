@@ -28,5 +28,6 @@ to `docs/current-state.md` with an evidence label.
 ## Not ready for hardware testing
 
 - Incoming calls through Android Telecom.
-- Native Contacts synchronization.
+- Native Contacts synchronization; its account and sync boundaries are packaged
+  but intentionally refuse activation.
 - AnalogBridge conversation inbox and message notifications.

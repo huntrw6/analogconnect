@@ -54,3 +54,19 @@ earpiece/speaker route, and tears audio down with the Telecom call.
 3. Hardware-test outgoing dial, DTMF, hang-up, call audio, and speaker routing.
 4. Hardware-test alongside ordinary cellular and emergency-call behavior before
    making the integration a default.
+
+## Contacts foundation
+
+The API-27 APK now declares a dedicated `com.analogconnect.contacts` account type,
+an authenticator protected by Android's account-authenticator binding permission,
+and a read-only Contacts sync adapter protected by the sync-adapter binding
+permission. The authenticator refuses account creation and the adapter skips sync
+until an authenticated snapshot contract, runtime contact permission flow, atomic
+replacement, and account-removal cleanup are implemented.
+
+- `VERIFIED_AUTOMATED`: authenticator and sync-adapter metadata compile, package,
+  and reference the system Contacts authority without requesting upload support.
+- `DOCUMENTED`: installing or launching the APK does not request Contacts access,
+  create an account, or write a contact.
+- `UNKNOWN`: built-in Contacts display, deduplication, caller matching, account
+  removal, and Contacts-to-Telecom dialing on the target phone.

@@ -302,6 +302,10 @@ bearer token and can perform privacy-safe health and authenticated status checks
   call audio, follows the system speaker route, and tears down idempotently.
 - `UNKNOWN`: real Contacts-to-AnalogBridge dialing and Telecom-owned audio; the
   outgoing-routing APK awaits an operator-available deployment window.
+- `VERIFIED_AUTOMATED`: a fail-closed native Contacts account authenticator and
+  read-only sync-adapter boundary compile and package for the system Contacts
+  authority; account creation, runtime permission requests, and contact writes are
+  not yet enabled.
 
 ### MAP
 
