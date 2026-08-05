@@ -263,6 +263,10 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_AUTOMATED`: a production-binary loopback smoke test exercised the
   installed WirePlumber/PipeWire observers while idle and returned HFP
   `disconnected`, call `idle`, and audio `inactive`, then shut down cleanly.
+- `VERIFIED_AUTOMATED`: the installed daemon is enabled in the lingering user boot
+  target; Bluetooth, PipeWire, WirePlumber, and Avahi are enabled; its private
+  configuration persists with mode `0600`; and its pinned-TLS listener accepts any
+  DHCP-assigned LAN address for mDNS rediscovery.
 - `VERIFIED_AUTOMATED`: Android compiles the matching bounded issuance request and
   validates the response into an in-memory-only monotonic credential object.
 - `VERIFIED_AUTOMATED`: the Android client compiles token-at-rest protection using
@@ -344,7 +348,8 @@ bearer token and can perform privacy-safe health and authenticated status checks
   delivery work for a deliberate test message.
 - `UNKNOWN`: MAP delivery-state notifications, MMS, attachments, sent-folder
   reflection, and locked-iPhone behavior.
-- `UNKNOWN`: automatic recovery after reboot, Bluetooth loss, or network loss.
+- `UNKNOWN`: end-to-end automatic recovery after a physical reboot, Bluetooth
+  loss, or network loss; static boot configuration is automated-test verified.
 - `UNKNOWN`: sustained-call quality with the latest bounded latency trimmer and
   hardware-backed Keystore status.
 

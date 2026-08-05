@@ -21,15 +21,25 @@ root, drops every Linux capability, uses a private umask, and applies systemd
 filesystem/kernel hardening. Clean shutdown remains stopped so administrative
 stops do not create restart loops.
 
+For plug-in-and-use operation, the TLS listener uses `0.0.0.0:8787`. This binds
+the daemon to whichever LAN address DHCP assigns after boot. Android resolves the
+current address through Avahi/mDNS and retains the stable TLS identity and exact
+certificate pin. User lingering must remain enabled so the user service starts
+without an interactive login.
+
 Validation commands:
 
 ```bash
 systemd-analyze --user verify config/systemd/analogconnectd.service
 systemctl --user daemon-reload
 systemctl --user enable --now analogconnectd.service
+scripts/boot-readiness.sh
 ```
 
 - `DOCUMENTED`: systemd `Restart=on-failure` excludes clean exits and explicit
   service stops.
-- `UNKNOWN`: restart after a real daemon crash, reboot startup, and recovery after
-  Wi-Fi or Bluetooth loss.
+- `VERIFIED_AUTOMATED`: the installed daemon, Bluetooth, PipeWire, WirePlumber,
+  Avahi, user lingering, private environment permissions, required TLS settings,
+  and address-independent listener pass the privacy-safe boot-readiness check.
+- `UNKNOWN`: full recovery after a physical power cycle and reconnection after
+  temporary Wi-Fi or Bluetooth loss.

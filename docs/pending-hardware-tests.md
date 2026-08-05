@@ -11,6 +11,15 @@ to `docs/current-state.md` with an evidence label.
   three, and five minutes.
 - Confirm clarity, popping, and subjective delay through earpiece and speakerphone.
 
+## Plug-in-and-use restart
+
+- With both phones available, reboot the Pi without changing enrollment.
+- Confirm the daemon becomes healthy without an interactive Pi login.
+- Confirm Android discovers the newly assigned address and authenticates with its
+  existing certificate pin and token.
+- Confirm the trusted iPhone reconnects HFP, MAP, and PBAP without pairing again.
+- Place one call and send one deliberate message after recovery.
+
 ## Experimental Android Phone integration
 
 - Confirm the app preserves the saved enrollment after the settings-store migration.
