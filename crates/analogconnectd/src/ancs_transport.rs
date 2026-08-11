@@ -233,7 +233,6 @@ impl AncsSupervisor {
 
     #[must_use]
     pub fn connected(&mut self) -> SupervisorCommand {
-        self.backoff.connected();
         self.protocol = AncsProtocolConsumer::default();
         self.state = SupervisorState::SubscribingNotificationSource;
         SupervisorCommand::SubscribeNotificationSource
@@ -247,6 +246,7 @@ impl AncsSupervisor {
 
     pub fn data_source_subscribed(&mut self) {
         self.state = SupervisorState::Ready;
+        self.backoff.connected();
     }
 
     #[must_use]
@@ -409,6 +409,28 @@ mod tests {
         assert_eq!(
             supervisor.connected(),
             SupervisorCommand::SubscribeNotificationSource
+        );
+    }
+
+    #[test]
+    fn partial_subscription_failures_back_off_until_ready() {
+        let mut supervisor = AncsSupervisor::default();
+        let _ = supervisor.connected();
+        assert_eq!(
+            supervisor.disconnected(),
+            SupervisorCommand::RetryAfterSeconds(2)
+        );
+        let _ = supervisor.connected();
+        assert_eq!(
+            supervisor.disconnected(),
+            SupervisorCommand::RetryAfterSeconds(4)
+        );
+        let _ = supervisor.connected();
+        let _ = supervisor.notification_source_subscribed();
+        supervisor.data_source_subscribed();
+        assert_eq!(
+            supervisor.disconnected(),
+            SupervisorCommand::RetryAfterSeconds(2)
         );
     }
 }
