@@ -68,6 +68,7 @@ public final class CallsActivity extends Activity {
     private boolean permissionRequested;
     private boolean permissionDenied;
     private boolean bridgeAvailable;
+    private boolean connectionChecked;
     private PowerManager.WakeLock proximityLock;
     private boolean keyReceiverRegistered;
     private final BroadcastReceiver demoKeyReceiver = new BroadcastReceiver() {
@@ -100,10 +101,12 @@ public final class CallsActivity extends Activity {
                                 return;
                             }
                             if (result == null) {
+                                connectionChecked = true;
                                 status.setText("Bridge unavailable · retrying");
                                 bridgeAvailable = false;
                                 render(CallController.reduce(callState));
                             } else {
+                                connectionChecked = true;
                                 bridgeAvailable = true;
                                 callState = result;
                                 render(CallController.reduce(result));
@@ -386,6 +389,7 @@ public final class CallsActivity extends Activity {
         }
         if (!commandPending) {
             status.setText(settings.demoMode() ? "Offline demo · no real call actions"
+                    : !connectionChecked ? "Connecting to iPhone calls…"
                     : bridgeAvailable ? "iPhone calls connected" : "Calls unavailable · retrying");
         }
     }
