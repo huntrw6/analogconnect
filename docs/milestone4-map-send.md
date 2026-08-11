@@ -8,6 +8,12 @@ request and returns only aggregate acceptance or a redacted error. The Android U
 requires an explicit confirmation dialog before submitting a message and clears
 the body after transport acceptance.
 
+New clients also attach a random 128-bit operation identifier. The daemon retains
+only a bounded set of identifiers for its process lifetime, rejects a simultaneous
+duplicate, and acknowledges an already accepted duplicate without invoking imsg
+again. The Android UI disables its send control while a request is active and
+reuses the identifier when the unchanged draft is retried after failure.
+
 ## Privacy and safety properties
 
 - Authentication occurs before JSON parsing.
@@ -33,9 +39,18 @@ treated as a multi-user host.
   aggregate-only success, and mock transport invocation pass Rust tests.
 - `VERIFIED_AUTOMATED`: the API-27 Android compose/confirmation client builds and
   its APK signature verifies.
+- `VERIFIED_AUTOMATED`: operation-ID validation/redaction, bounded daemon-lifetime
+  duplicate suppression, backward-compatible requests, Android CSPRNG generation,
+  unchanged-draft reuse, and active-request button gating pass software tests and
+  build checks.
+- `DOCUMENTED`: duplicate suppression is not yet durable across daemon or Android
+  process restart. API v2 will use the imsg outbox and reconciliation states for
+  durable retry semantics.
 - `VERIFIED_HARDWARE`: one deliberately reviewed Android request was accepted by
   the iPhone MAP transport and the intended recipient confirmed SMS receipt. No
   recipient, body, message handle, or timestamp was retained in project evidence.
+- `VERIFIED_HARDWARE`: outbound texting works after correcting the daemon service
+  sandbox to permit only imsg data/state writes.
 - `UNKNOWN`: sent-folder reflection, failure recovery, locked-iPhone behavior,
   MMS, and attachments.
 

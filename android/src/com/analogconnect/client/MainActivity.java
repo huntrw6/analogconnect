@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -36,6 +37,8 @@ public final class MainActivity extends Activity {
     private EditText tlsName;
     private EditText recipient;
     private EditText messageBody;
+    private Button sendMessageButton;
+    private final MessageSendDraft messageSendDraft = new MessageSendDraft();
     private EditText dialTarget;
     private EditText dtmfTone;
     private TextView result;
@@ -216,15 +219,42 @@ public final class MainActivity extends Activity {
                 | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         layout.addView(messageBody);
 
-        Button send = new Button(this);
-        send.setText("Review and send");
-        send.setOnClickListener(new View.OnClickListener() {
+        sendMessageButton = new Button(this);
+        sendMessageButton.setText("Review and send");
+        sendMessageButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 confirmSend();
             }
         });
-        layout.addView(send);
+        layout.addView(sendMessageButton);
+
+        Button conversations = new Button(this);
+        conversations.setText("Open conversations");
+        conversations.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                startActivity(new Intent(MainActivity.this, ConversationsActivity.class));
+            }
+        });
+        layout.addView(conversations);
+
+        Button contacts = new Button(this);
+        contacts.setText("Open contacts");
+        contacts.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                startActivity(new Intent(MainActivity.this, ContactsActivity.class));
+            }
+        });
+        layout.addView(contacts);
+
+        Button calls = new Button(this);
+        calls.setText("Open calls");
+        calls.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                startActivity(new Intent(MainActivity.this, CallsActivity.class));
+            }
+        });
+        layout.addView(calls);
 
         TextView callTitle = new TextView(this);
         callTitle.setText("Call controls");
@@ -455,6 +485,7 @@ public final class MainActivity extends Activity {
             result.setText("Recipient and message are required");
             return;
         }
+        final String operationId = messageSendDraft.operationIdFor(recipientValue, bodyValue);
         new AlertDialog.Builder(this)
                 .setTitle("Send this SMS?")
                 .setMessage("To: " + recipientValue + "\n\n" + bodyValue)
@@ -462,14 +493,16 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Send", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        sendMessage(recipientValue, bodyValue);
+                        sendMessage(recipientValue, bodyValue, operationId);
                     }
                 })
                 .show();
     }
 
-    private void sendMessage(final String recipientValue, final String bodyValue) {
+    private void sendMessage(final String recipientValue, final String bodyValue,
+            final String operationId) {
         result.setText("Sending…");
+        sendMessageButton.setEnabled(false);
         final String endpointValue = endpoint.getText().toString();
         executor.execute(new Runnable() {
             @Override
@@ -478,7 +511,7 @@ public final class MainActivity extends Activity {
                 boolean sent = false;
                 try {
                     apiClient().sendMessage(
-                            endpointValue, vault.load(), recipientValue, bodyValue);
+                            endpointValue, vault.load(), recipientValue, bodyValue, operationId);
                     message = "Message accepted by iPhone transport";
                     sent = true;
                 } catch (Exception error) {
@@ -490,8 +523,10 @@ public final class MainActivity extends Activity {
                     @Override
                     public void run() {
                         result.setText(finalMessage);
+                        sendMessageButton.setEnabled(true);
                         if (clearBody) {
                             messageBody.setText("");
+                            messageSendDraft.accepted();
                         }
                     }
                 });

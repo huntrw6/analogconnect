@@ -51,10 +51,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         optional_env(TLS_KEY_ENV)?,
         listen_addr,
     )?;
-    let router = app(AppState::new_with_tokens(
-        SystemStatus::default(),
-        auth_tokens,
-    ));
+    let state = AppState::new_with_tokens(SystemStatus::default(), auth_tokens);
+    let _message_sync_task = state.start_message_sync_task();
+    let _contact_sync_task = state.start_contact_sync_task();
+    let router = app(state);
 
     match listener_mode {
         ListenerMode::Plaintext => {

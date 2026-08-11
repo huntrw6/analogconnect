@@ -1,151 +1,142 @@
-# AnalogConnect Agent State
+# AnalogConnect agent state
 
 ## Current milestone
-Milestone 5 — HFP call control — SOFTWARE COMPLETE, HARDWARE VALIDATION PENDING
 
-## Current phase
-Hardware-free backend foundations and authenticated server control plane — COMPLETE
+Milestone 7 — Integrated Android companion product
 
 ## Current objective
-Hardware-validate Pi-originated HFP call control under privacy-controlled,
-reversible procedures, beginning with hangup during a test call.
+
+Restore reliable outbound messaging, retain the hardware-verified call/audio
+vertical slice, and execute `docs/product-roadmap.md` until an operator-only
+hardware observation or approved system change is required.
 
 ## Current classification
-`HFP_SCO_BIDIRECTIONAL_PACKET_FLOW_VERIFIED`
+
+`CALL_AUDIO_AND_SMS_VERTICAL_SLICE_VERIFIED`
+
+## Latest evidence
+
+- `VERIFIED_HARDWARE`: the latest real call sounded good on both ends.
+- `VERIFIED_HARDWARE`: Android-originated texting works again after the narrow
+  imsg writable-path correction.
+- `VERIFIED_HARDWARE`: an earlier Android-originated SMS was delivered through
+  iPhone MAP.
+- `DOCUMENTED`: the active daemon service makes the home directory read-only;
+  `imsg send` opens a store that requires a writable path and may write broker
+  state beneath the home directory.
+- `VERIFIED_HARDWARE`: the controlled correction and successful retest verify the
+  service/imsg writable-path mismatch as the regression cause.
+- `VERIFIED_AUTOMATED`: the approved narrow writable-path correction is installed;
+  the daemon retained read-only home protection, restarted, and is active.
+- `VERIFIED_HARDWARE`: the correction restores real SMS delivery.
+- `VERIFIED_HARDWARE`: the deployed v2 API opened the real encrypted imsg store;
+  its aggregate conversation result was empty without exposing private fields.
+- `VERIFIED_AUTOMATED`: the next daemon release automatically polls and syncs
+  exactly inbox and sent, with deleted excluded and command output discarded.
+- `VERIFIED_HARDWARE`: that release is installed and active; aggregate checks
+  observed two successful syncs, zero failures, five conversations, and five
+  correctly ordered messages in one thread without emitting private content.
+- `VERIFIED_HARDWARE`: the Android screen displays five populated conversations,
+  but the operator found that group messages are incorrectly split by sender.
+- `DOCUMENTED`: imsg 0.3.1 and upstream 0.4.0 aggregate by one peer address even
+  though the parsed MAP body can contain multiple participant vCards.
+- `VERIFIED_AUTOMATED`: a narrow patched imsg store/session preserves participant
+  sets, migrates existing handles, keeps direct peer keys stable, groups synthetic
+  multi-sender histories, and passes 52 upstream/extension tests.
+- `VERIFIED_AUTOMATED`: the matching daemon/API and Android group-safe UI pass all
+  project tests; group replies are deliberately disabled.
+- `VERIFIED_HARDWARE`: the first deployed participant-set attempt stayed healthy
+  but found zero groups and seven rows, proving that vCard cardinality is
+  insufficient on this iPhone while the fail-closed reply guard works.
+- `VERIFIED_HARDWARE`: explicitly requesting all message-list attributes still
+  returned zero MAP conversation identities, and the separate standardized
+  conversation-listing operation succeeded but returned zero conversations.
+- `VERIFIED_HARDWARE`: the only iPhone MAS record is MAP 1.4 with raw feature mask
+  `0x0006027f`. Messages-Listing v1.1 is advertised; Conversation Listing, Event
+  Report v1.2, Conversation Version Counters, and feature-mask-in-CONNECT are not.
+  The client correctly omits CONNECT tag `0x29` for this server.
+- `VERIFIED_HARDWARE`: Messages Listing reported `ListingSize=10` but no
+  conversation/direction/participant fields. Conversation Listing returned an
+  empty body with `ListingSize` absent. Controlled MAP group/direct events were
+  identical and contained no group identity.
+- `VERIFIED_HARDWARE`: direct-GATT ANCS subscribed successfully. Two controlled
+  group notifications had Title+Subtitle, while a clean direct notification and
+  its duplicate update had Title only. Classification is
+  `ANCS_GROUP_DETECTION_ONLY`: detection is reliable in this test, but no stable
+  group identifier, participant set, or safe reply target is verified.
+- `VERIFIED_HARDWARE`: `ANCS_STABLE_GROUP_IDENTITY_VERIFIED`. Different senders
+  in the same group produced one normalized Subtitle HMAC, a different group
+  produced another, and direct remained Subtitle-absent. The ephemeral key was
+  destroyed; the identity is suitable for local incoming/history correlation but
+  not group reply.
+- `VERIFIED_HARDWARE`: plaintext controlled inspection established
+  `ANCS_GROUP_THREADING_VERIFIED`: Title is sender, named-group Subtitle is the
+  Messages group name, unnamed-group Subtitle is a participant-generated label,
+  and direct Subtitle is empty.
+- `VERIFIED_AUTOMATED`: deterministic full-SHA256 `ancs-v1-…` identity,
+  encrypted metadata/sender/assignment/conflict/alias storage, close/reopen
+  persistence, bounded fail-closed ANCS↔MAP correlation, stable group API fields,
+  and Android title/ID/reply guards pass software tests.
+- `UNKNOWN`: the production daemon has a clean correlation/apply boundary but no
+  supervised live ANCS transport feeding it. The direct-GATT Python probe is not
+  production transport. Unnamed-group stability still needs the planned hardware
+  regression. Group replies remain disabled.
+- `VERIFIED_AUTOMATED`: a transport-independent production ANCS protocol core now
+  covers strict Notification Source parsing, body-free attribute requests,
+  bounded fragment reassembly, Messages filtering, serialized requests,
+  duplicate/replay suppression, bounded queues, ordered subscription supervision,
+  and capped reconnect backoff. The actual BlueZ bearer/daemon adapter is still
+  `UNKNOWN`.
+- `BLOCKED`: Accessory Notifications live testing requires iOS 26.5 plus a current
+  Mac/Xcode SDK and provisionable Accessory Data Provider, Transport Security,
+  and Transport Extension entitlements. This Linux environment has none of that
+  Apple build/signing toolchain, so Messages `threadIdentifier` and text-input
+  Reply behavior remain untested.
+- `VERIFIED_AUTOMATED`: a dedicated API-27 call screen now reduces aggregate call
+  states into eligible controls, validates DTMF, polls without private logs,
+  auto-starts bounded call audio, shows duration/audio/route state, and passes the
+  signed APK build plus controller regression tests.
+- `VERIFIED_HARDWARE`: the call-screen APK is installed on the Android device with
+  app data preserved and a recoverable pre-deployment APK backup.
+- `VERIFIED_HARDWARE`: automatic PBAP contact refresh loaded 438 contacts and 471
+  phone fields; the authenticated contact API returned a populated first page and
+  all seven current conversation rows received unique contact-name matches without
+  emitting names or numbers as evidence.
+- `VERIFIED_AUTOMATED`: contact search/pagination, unique number matching, separate
+  display-name/routing-number fields, Android contact models/controllers, and
+  privacy-safe conversation labels pass the Rust and API-27 suites.
+- `VERIFIED_HARDWARE`: the signed contact-list/name-resolution APK and daemon are
+  installed. The Android contact list, search, load-more, and name-rendering
+  appearance now require a physical walkthrough.
 
 ## Last completed action
-Implemented the supported WirePlumber Telephony D-Bus HFP backend, authenticated
-call-command API, and confirmation-based Android controls. Automated tests prove
-numeric private-path discovery, ambiguity rejection, redacted errors, and command
-mapping without taking RFCOMM ownership.
 
-## Evidence
+Completed the first Android product-shell conversion on top of persistent ANCS
+group identity: familiar top-level navigation, conversation rows and bubbles,
+private compose, fail-closed group/ambiguous states, dial pad and call-state UI,
+contacts/settings, preserved Developer Tools, and isolated in-memory fixtures.
+The API-27 unit suite and signed APK build pass. Live transport into the ANCS
+boundary is explicitly not integrated and group reply remains closed.
 
-### Established
+## Next autonomous actions
 
-- `VERIFIED_HARDWARE`: MAP works (with reconnection)
-- `VERIFIED_HARDWARE`: PBAP works (with reconnection)
-- `VERIFIED_AUTOMATED`: The iPhone advertises HFP Audio Gateway UUID `111f`
-- `VERIFIED_AUTOMATED`: `ServicesResolved` is true (D-Bus property, current session)
-- `VERIFIED_AUTOMATED`: WirePlumber (PID 298021, sender `:1.885`) registered `/Profile/HFPHF` (UUID 0x111e) and `/Profile/HFPAG` (UUID 0x111f) — Phase E D-Bus capture
-- `VERIFIED_AUTOMATED`: Phase E btmon shows RFCOMM SABM sent by LOCAL Pi (TX), UA received — Pi initiated RFCOMM to iPhone AG service
-- `VERIFIED_AUTOMATED`: Phase H: Fresh NewConnection reached current WirePlumber process (`:1.885`)
-- `VERIFIED_AUTOMATED`: Phase H: WirePlumber accepted the RFCOMM descriptor
-- `VERIFIED_AUTOMATED`: Phase H: AT+BRSF completed — `+BRSF:4079`
-- `VERIFIED_AUTOMATED`: Phase H: AT+BAC=1,2,3 completed
-- `VERIFIED_AUTOMATED`: Phase H: AT+CIND=? completed — 7 indicators mapped
-- `VERIFIED_AUTOMATED`: Phase H: AT+CIND? completed — `+CIND: 1,0,0,4,2,0,0`
-- `VERIFIED_AUTOMATED`: Phase H: AT+CMER=3,0,0,1 completed
-- `VERIFIED_AUTOMATED`: Phase H: AT+CHLD=? completed — `+CHLD: (0,1,1x,2,2x,3)`
-- `VERIFIED_AUTOMATED`: Phase H: AT+CLIP=1 completed
-- `VERIFIED_AUTOMATED`: Phase H: AT+CCWA=1 completed
-- `VERIFIED_AUTOMATED`: Phase H: AT+CMEE=1 completed
-- `VERIFIED_AUTOMATED`: Phase H: AT+CLCC completed
-- `VERIFIED_AUTOMATED`: Phase H: call=0, callsetup=0, callheld=0
-- `VERIFIED_AUTOMATED`: Phase H: RFCOMM remained connected after SLC
-- `VERIFIED_AUTOMATED`: Phase H: `telephony_ag_register` called — AudioGateway registered
-- `VERIFIED_AUTOMATED`: Phase I: iPhone sent `+BCS:2` (mSBC codec selection) — incoming call
-- `VERIFIED_AUTOMATED`: Phase I: WirePlumber sent `AT+BCS=2` → OK (codec confirmed)
-- `VERIFIED_AUTOMATED`: Phase I: HCI Connect Request (eSCO) → Accept Synchronous Connection → Synchronous Connect Complete (Handle 6)
-- `VERIFIED_AUTOMATED`: Phase I: Bidirectional SCO data flowing (SCO Data RX + TX, Handle 6, dlen 60)
-- `VERIFIED_AUTOMATED`: Phase I: `+CIEV: 3,1` → `call=1` → `callsetup=0` → `+CIEV: 2,0` → `call=0` (call indicator transitions)
-- `VERIFIED_AUTOMATED`: Phase I: `telephony_call_register` and `telephony_call_unregister` lifecycle
-- `VERIFIED_AUTOMATED`: Phase I: SCO transport stopped and released cleanly after hangup
-- `VERIFIED_AUTOMATED`: Phase I: RFCOMM retained after call — DLC alive post-call
-- `VERIFIED_AUTOMATED`: Phase I: MAP folders and inbox listed post-call (exit 0)
-- `VERIFIED_AUTOMATED`: Phase I: PBAP contacts pulled post-call (exit 0)
-- `VERIFIED_AUTOMATED`: `/sys/kernel/debug/bluetooth/rfcomm` shows active RFCOMM session to iPhone channel 8, dlci 16, mtu 1015
-- `VERIFIED_AUTOMATED`: Phase G4: `DisconnectProfile("0000111f-...")` successfully removes RFCOMM session
-- `VERIFIED_AUTOMATED`: Phase G6: `ConnectProfile("0000111f-...")` successfully creates fresh RFCOMM session
-- `VERIFIED_AUTOMATED`: Phase G6: D-Bus monitor captured `NewConnection` delivered to `Destination=:1.885` (current WirePlumber) on `/Profile/HFPHF`, accepted with method_return success (3ms)
-- `VERIFIED_AUTOMATED`: Phase 4 restart: `spa.bluez5.sink.sco: failed to write data: -104 (Connection reset by peer)` — headset-head-unit DID appear and SCO transport was created, but SCO link was reset by iPhone
-- `VERIFIED_AUTOMATED`: Phase 4 restart: A2DP `SET_CONFIGURATION request rejected: Configuration not supported (41)` — iPhone rejected initial A2DP codec negotiation
-- `DOCUMENTED`: Profile mapping: `path_to_profile("/Profile/HFPHF")` → `SPA_BT_PROFILE_HFP_AG` → `SPA_BT_PROFILE_HEADSET_AUDIO_GATEWAY`. The `headset-head-unit` EnumProfile requires `SPA_BT_PROFILE_HEADSET_HEAD_UNIT = SPA_BT_PROFILE_HSP_HS | SPA_BT_PROFILE_HFP_HF`, which is only set when a remote device connects to our AG profile.
-- `DOCUMENTED`: Service Level Connection and Audio Connection are separate procedures. Codec negotiation and SCO are initiated only when audio is needed.
+1. Continue interaction and accessibility refinement with layout-level tests.
+2. Add a supervised production ANCS transport that can coexist with MAP and feed
+   the tested correlation boundary; do not use the diagnostic script as transport.
+3. Add persisted call-recents data only after the backend has a truthful source.
 
-### Post-Phase H PipeWire State
+## Next operator gate
 
-- `VERIFIED_AUTOMATED`: No HFP transport was present in the post-test PipeWire state
-- `VERIFIED_AUTOMATED`: No SCO source or sink was present in the post-test PipeWire state
-- These are expected possibilities while idle — they may appear only when audio is requested
+Operator testing is now required for the installed call screen: focus/layout,
+real incoming or outgoing state transitions, audio route, and teardown cannot be
+established in automation.
 
-### Corrected (previous claim withdrawn)
+## Authoritative references
 
-- ~~`HFP_SLC_COMPLETED_BUT_NO_CODEC_NEGOTIATION`~~ — **WITHDRAWN**. Not a failure classification. Idle lack of codec negotiation is expected behavior.
-- ~~`HFP_CURRENT_OWNER_ACCEPTS_BUT_PIPELINE_INACTIVE`~~ — **SUPERSEDED**. Phase H proved the AT SLC completes successfully.
-- ~~`HFP_RFCOMM_PRECEDES_CURRENT_WIREPLUMBER_REGISTRATION`~~ — **REFUTED**. Phase G proved the current WirePlumber DOES receive and accept NewConnection.
-- ~~`HFP_SLC_NOT_REFLECTED_IN_CONNECTED_PROFILES`~~ — **SUPERSEDED**. The SLC is reflected in connected_profiles.
+- Current evidence: `docs/current-state.md`
+- Completion plan: `docs/product-roadmap.md`
+- SMS diagnosis: `docs/outbound-message-regression.md`
+- Hardware gates: `docs/pending-hardware-tests.md`
 
-### Superseded (do not cite as current)
-
-- ~~`PIPEWIRE_HFP_BACKEND_NOT_CONFIGURED`~~ — withdrawn
-- ~~"WirePlumber registers 0 Profile1 interfaces after restart"~~ — withdrawn
-- ~~"Stale UUID registration persists across bluetoothd restart"~~ — withdrawn
-- ~~"D-Bus rejects WirePlumber method_returns"~~ — withdrawn
-- ~~`HFP_CURRENT_REGISTRATION_AND_CONNECT_STATE_UNRESOLVED`~~ — superseded
-- ~~`HFP_CONTROL_CONNECTION_DROPPED`~~ — superseded
-
-## Current state summary
-
-```
-Milestone 0: BLUETOOTH FEASIBILITY COMPLETE
-MAP: VERIFIED_HARDWARE
-PBAP: VERIFIED_HARDWARE
-HFP SLC and call indicators: VERIFIED_AUTOMATED
-HFP codec/eSCO/SCO packet flow: VERIFIED_AUTOMATED
-Pi-originated call commands: UNKNOWN
-Human-confirmed intelligible audio: UNKNOWN
-RFCOMM alive post-call
-MAP/PBAP operational post-call
-SCO cleanly torn down after hangup
-```
-
-## Do not require before the call
-
-- `headset-head-unit` — may appear only when a remote device connects to our AG profile
-- An HFP audio transport — may be created only when audio is requested
-- SCO nodes — may appear only when audio is routed to the Pi
-- `+BCS` — the AG sends `+BCS:<codec>` when it initiates codec selection; the HF responds with `AT+BCS=<codec>`
-
-## Approved system changes
-- Removed malformed system fragment `/etc/wireplumber/wireplumber.conf.d/51-bluez-hfp.conf` → `.invalid-disabled`
-- Removed user-level isolation fragment `90-analogconnect-hfp-isolation.conf`
-
-## Pending user actions
-- HFP command validation requires guided test-call interaction with the iPhone.
-
-## Next action
-Validate HangupAll during a test call through WirePlumber's supported Telephony
-D-Bus seam without recording audio, telephone numbers, or private call metadata.
-
-## Tests
-- test-diagnostics.sh: 31/31 passing
-- Rust unit/API tests: 13/13 passing
-- Android API-27 debug APK build and signature verification: passing
-- Android 8.1 hardware install, activity launch, and live-process check: passing
-- Android-to-Pi-to-iPhone outbound MAP SMS and recipient receipt: passing
-- Cargo fmt: passing
-- Cargo Clippy with warnings denied: passing
-- Manual loopback daemon health/status and graceful-shutdown smoke test: passing
-- MH-MAP-001: PASS (MAP listing, retrieval working)
-- MH-PBAP-001: PASS (PBAP listing working after reconnection)
-- HFP RFCOMM establishment: PASS (Phase E, G, H — SABM TX, UA received, channel 8, dlci 16)
-- HFP AT SLC: PASS (Phase H — all AT commands return OK, full WirePlumber trace)
-- HFP SLC alive: PASS (Phase F, H — RFCOMM in debugfs, no disconnect)
-- HFP NewConnection callback: VERIFIED (Phase G, H — delivered to `:1.885`, accepted)
-- HFP DisconnectProfile/ConnectProfile: VERIFIED (Phase G — RFCOMM successfully removed and re-created)
-- HFP control plane: VERIFIED (Phase H — SLC complete, indicators synchronized, RFCOMM alive)
-- HFP incoming-call transport test: VERIFIED (Phase I — +BCS codec negotiation, eSCO established, bidirectional SCO packets, teardown, RFCOMM retained, MAP/PBAP post-call)
-
-## Important decisions
-- imsg works without bluez-obexd — uses own OBEX implementation
-- iOS requires manual permission grant before first MAP/PBAP connection
-- Re-pairing not justified — remote UUIDs are correct, service discovery complete
-- Native backend and `hfp_hf` role are WirePlumber 0.5 defaults — no explicit config needed
-- Profile1 objects are client-owned, not BlueZ-owned — cannot be found via BlueZ ObjectManager
-- One-shot busctl RegisterProfile does not persist — registration removed when caller exits
-- `bluez5.profile` is NOT the authoritative active-profile state — EnumProfile and Profile parameters are authoritative
-- Pi-as-HF → `SPA_BT_PROFILE_HFP_AG` → `SPA_BT_PROFILE_HEADSET_AUDIO_GATEWAY` (NOT `HEADSET_HEAD_UNIT`)
-- Service Level Connection and Audio Connection are separate procedures
-- Codec negotiation and SCO are initiated only when audio is needed
-- Idle lack of +BCS is expected behavior, not a failure
+Historical phase documents remain useful investigation records but are not the
+authoritative current status.

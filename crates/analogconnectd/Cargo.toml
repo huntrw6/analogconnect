@@ -10,16 +10,24 @@ analogconnect-core = { path = "../analogconnect-core" }
 axum.workspace = true
 axum-server.workspace = true
 futures-util.workspace = true
+imsg-config = "0.3.1"
+imsg-keyring = "0.3.1"
+imsg-store = "0.3.1"
 rusqlite.workspace = true
 rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+unicode-casefold.workspace = true
+unicode-normalization.workspace = true
 
 [dev-dependencies]
+secrecy = "0.10"
+tempfile = "3"
 tokio-tungstenite.workspace = true
 tower.workspace = true

@@ -18,8 +18,10 @@ ANALOGCONNECT_TLS_KEY_PATH=/home/USER/.config/analogconnect/tls/daemon-key.pem
 The environment file is operator-owned and must never enter the repository.
 The unit restarts only failures, uses a bounded five-second delay, never runs as
 root, drops every Linux capability, uses a private umask, and applies systemd
-filesystem/kernel hardening. Clean shutdown remains stopped so administrative
-stops do not create restart loops.
+filesystem/kernel hardening. The home directory remains read-only except for
+imsg's encrypted data and broker-state directories, which outbound MAP operations
+must be able to update. Clean shutdown remains stopped so administrative stops do
+not create restart loops.
 
 For plug-in-and-use operation, the TLS listener uses `0.0.0.0:8787`. This binds
 the daemon to whichever LAN address DHCP assigns after boot. Android resolves the
@@ -40,6 +42,7 @@ scripts/boot-readiness.sh
   service stops.
 - `VERIFIED_AUTOMATED`: the installed daemon, Bluetooth, PipeWire, WirePlumber,
   Avahi, user lingering, private environment permissions, required TLS settings,
-  and address-independent listener pass the privacy-safe boot-readiness check.
+  address-independent listener, read-only home policy, and narrow imsg writable
+  paths pass the privacy-safe boot-readiness check.
 - `UNKNOWN`: full recovery after a physical power cycle and reconnection after
   temporary Wi-Fi or Bluetooth loss.

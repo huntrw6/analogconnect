@@ -9,6 +9,7 @@ final class EnrollmentSettings {
     private static final String CERTIFICATE_PIN = "certificate_pin";
     private static final String TLS_NAME = "tls_name";
     private static final String DEFAULT_ENDPOINT = "http://127.0.0.1:8787";
+    private static final String DEMO_MODE = "demo_mode";
 
     private final SharedPreferences preferences;
 
@@ -34,6 +35,12 @@ final class EnrollmentSettings {
 
     String tlsName() {
         return preferences.getString(TLS_NAME, "");
+    }
+
+    boolean demoMode() { return preferences.getBoolean(DEMO_MODE, false); }
+
+    void setDemoMode(boolean enabled) {
+        preferences.edit().putBoolean(DEMO_MODE, enabled).apply();
     }
 
     void save(String endpoint, String certificatePin, String tlsName) {

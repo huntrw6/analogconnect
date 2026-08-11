@@ -43,6 +43,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ContactSummary"
+  /api/v2/contacts/search:
+    post:
+      operationId: searchContactsV2
+      security:
+        - bearerAuth: []
+      description: Returns a bounded private contact page; search text stays in the request body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactPageRequest"
+      responses:
+        "200":
+          description: Private contact page; clients must not cache or log it.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                const: no-store
+            Pragma:
+              required: true
+              schema:
+                const: no-cache
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactPage"
   /api/v1/messages/summary:
     get:
       operationId: getMessageSyncSummary
@@ -70,15 +98,86 @@ paths:
               $ref: "#/components/schemas/OutboundMessage"
       responses:
         "202":
-          description: The MAP transport accepted the send operation.
+          description: The MAP transport accepted the send operation, or the same operation was already accepted.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SendMessageResponse"
         "422":
           description: Recipient or body validation failed without echoing input.
+        "409":
+          description: The same operation identifier is currently in flight.
         "502":
           description: MAP transport failed with a redacted error.
+  /api/v2/conversations:
+    get:
+      operationId: listConversationsV2
+      security:
+        - bearerAuth: []
+      description: Returns a bounded page of private conversation summaries over authenticated pinned TLS.
+      parameters:
+        - in: query
+          name: cursor
+          schema:
+            type: string
+            pattern: "^[0-9a-f]{16}$"
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Private conversation page; clients must not cache or log it.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                const: no-store
+            Pragma:
+              required: true
+              schema:
+                const: no-cache
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationPage"
+        "503":
+          description: Encrypted message store is unavailable; no backend details are returned.
+  /api/v2/conversations/messages:
+    post:
+      operationId: listConversationMessagesV2
+      security:
+        - bearerAuth: []
+      description: Returns a bounded private message-history page using an opaque conversation ID in the request body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationMessagesRequest"
+      responses:
+        "200":
+          description: Private message page; clients must not cache or log it.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                const: no-store
+            Pragma:
+              required: true
+              schema:
+                const: no-cache
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagePage"
+        "410":
+          description: Conversation alias expired; refetch the conversation page.
+        "503":
+          description: Encrypted message store is unavailable; no backend details are returned.
   /api/v1/audio/summary:
     get:
       operationId: getAudioBridgeSummary
@@ -238,6 +337,55 @@ components:
             - type: integer
               minimum: 0
             - type: "null"
+    ContactPageRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          maxLength: 100
+        cursor:
+          type: string
+          pattern: "^[0-9a-f]{16}$"
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+    ContactPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ContactItem"
+        next_cursor:
+          oneOf:
+            - type: string
+              pattern: "^[0-9a-f]{16}$"
+            - type: "null"
+    ContactItem:
+      type: object
+      additionalProperties: false
+      required: [display_name, phone_numbers]
+      properties:
+        display_name:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 256
+            - type: "null"
+        phone_numbers:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
     MessageSyncSummary:
       type: object
       additionalProperties: false
@@ -276,13 +424,167 @@ components:
           type: string
           minLength: 1
           maxLength: 2000
+        operation_id:
+          type: string
+          pattern: "^[0-9a-f]{32}$"
+          description: Optional opaque client identifier for daemon-lifetime duplicate suppression.
     SendMessageResponse:
       type: object
       additionalProperties: false
-      required: [accepted]
+      required: [accepted, duplicate]
       properties:
         accepted:
           const: true
+        duplicate:
+          type: boolean
+          description: True when this operation was accepted previously and the MAP transport was not invoked again.
+    ConversationPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ConversationItem"
+        next_cursor:
+          oneOf:
+            - type: string
+              pattern: "^[0-9a-f]{16}$"
+            - type: "null"
+    ConversationItem:
+      type: object
+      additionalProperties: false
+      required:
+        - conversation_id
+        - display_address
+        - display_name
+        - is_group
+        - reply_supported
+        - latest_unix_millis
+        - message_count
+        - unread_count
+        - latest_outgoing_state
+        - kind
+        - title
+        - can_reply
+        - identity_conflict
+      properties:
+        conversation_id:
+          type: string
+          pattern: "^([0-9a-f]{32}|ancs-v1-[0-9a-f]{64})$"
+        display_address:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Private response value; never log, cache, or place in a URL.
+        display_name:
+          description: Uniquely matched private contact name, or null when no safe match exists.
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 256
+            - type: "null"
+        is_group:
+          type: boolean
+          description: True for a verified ANCS group thread or a legacy MAP multi-peer thread.
+        reply_supported:
+          type: boolean
+          description: False for group threads until multi-recipient MAP sending is verified.
+        latest_unix_millis:
+          type: integer
+          minimum: 0
+        message_count:
+          type: integer
+          minimum: 0
+        unread_count:
+          type: integer
+          minimum: 0
+        latest_outgoing_state:
+          oneOf:
+            - $ref: "#/components/schemas/OutgoingMessageState"
+            - type: "null"
+        kind:
+          type: string
+          enum: [private, group, ambiguous]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Private display title; ANCS Subtitle for verified groups.
+        can_reply:
+          type: boolean
+          description: False for groups, ambiguous identities, and identity conflicts.
+        identity_conflict:
+          type: boolean
+    ConversationMessagesRequest:
+      type: object
+      additionalProperties: false
+      required: [conversation_id]
+      properties:
+        conversation_id:
+          type: string
+          pattern: "^([0-9a-f]{32}|ancs-v1-[0-9a-f]{64})$"
+        cursor:
+          type: string
+          pattern: "^[0-9a-f]{16}$"
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+    MessagePage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/MessageItem"
+        next_cursor:
+          oneOf:
+            - type: string
+              pattern: "^[0-9a-f]{16}$"
+            - type: "null"
+    MessageItem:
+      type: object
+      additionalProperties: false
+      required: [message_id, timestamp_unix_millis, direction, peer_address, body, read, outgoing_state]
+      properties:
+        message_id:
+          type: string
+          pattern: "^[0-9a-f]{16}$"
+        timestamp_unix_millis:
+          type: integer
+          minimum: 0
+        direction:
+          enum: [received, sent]
+        peer_address:
+          type: string
+          maxLength: 128
+          description: Private sender/peer display value; never log, cache, or place in a URL.
+        body:
+          type: string
+          maxLength: 2000
+          description: Private response value; never log, cache, or persist in saved UI state.
+        read:
+          type: boolean
+        outgoing_state:
+          oneOf:
+            - $ref: "#/components/schemas/OutgoingMessageState"
+            - type: "null"
+    OutgoingMessageState:
+      enum:
+        - queued
+        - sending
+        - sent_unconfirmed
+        - sent_confirmed
+        - failed_retryable
+        - failed_permanent
+        - unknown
     CallCommand:
       oneOf:
         - type: object

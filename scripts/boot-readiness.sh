@@ -27,6 +27,11 @@ check_value() {
 
 check_value daemon-enabled enabled systemctl --user is-enabled analogconnectd.service
 check_value daemon-active active systemctl --user is-active analogconnectd.service
+check_value daemon-home-protection read-only \
+    systemctl --user show analogconnectd.service -p ProtectHome --value
+check_value daemon-imsg-write-paths \
+    "$HOME/.local/share/imsg $HOME/.local/state/imsg" \
+    systemctl --user show analogconnectd.service -p ReadWritePaths --value
 check_value bluetooth-enabled enabled systemctl is-enabled bluetooth.service
 check_value bluetooth-active active systemctl is-active bluetooth.service
 check_value pipewire-enabled enabled systemctl --user is-enabled pipewire.service

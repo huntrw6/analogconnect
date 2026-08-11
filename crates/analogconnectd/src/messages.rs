@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashSet, VecDeque},
     path::PathBuf,
     process::{Command, Stdio},
     sync::Mutex,
@@ -137,7 +138,7 @@ impl MessageSyncScheduler {
 pub trait MapSyncBackend: Send + Sync {
     type Error;
 
-    fn sync_inbox(&self) -> Result<(), Self::Error>;
+    fn sync_conversations(&self) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug, Error)]
@@ -228,7 +229,7 @@ where
                 .map_err(|_| MessageCoordinatorError::LockPoisoned)?;
         }
 
-        let result = self.backend.sync_inbox();
+        let result = self.backend.sync_conversations();
         let mut summary = self
             .summary
             .lock()
@@ -265,6 +266,7 @@ pub enum ImsgMapError {
 
 /// Uses imsg as the owner of encrypted message persistence and incremental cursors.
 /// Command output is discarded and never included in logs or errors.
+#[derive(Clone)]
 pub struct ImsgMapBackend {
     executable: PathBuf,
 }
@@ -273,6 +275,80 @@ pub struct ImsgMapBackend {
 pub struct OutboundMessage {
     pub(crate) recipient: String,
     pub(crate) body: String,
+}
+
+/// Opaque client-generated identifier used only to suppress duplicate sends.
+/// It never contains a recipient, message body, timestamp, or device identifier.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct MessageOperationId(String);
+
+impl MessageOperationId {
+    pub fn new(value: String) -> Result<Self, OutboundMessageError> {
+        if value.len() != 32 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(OutboundMessageError::InvalidOperationId);
+        }
+        Ok(Self(value.to_ascii_lowercase()))
+    }
+}
+
+impl std::fmt::Debug for MessageOperationId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("MessageOperationId([redacted])")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageOperationStart {
+    New,
+    InFlight,
+    AcceptedDuplicate,
+}
+
+/// Bounded in-memory duplicate suppression for outbound message operations.
+/// Accepted identifiers survive for the daemon lifetime; no message data is retained.
+pub struct MessageOperationRegistry {
+    capacity: usize,
+    in_flight: HashSet<MessageOperationId>,
+    accepted: HashSet<MessageOperationId>,
+    accepted_order: VecDeque<MessageOperationId>,
+}
+
+impl MessageOperationRegistry {
+    #[must_use]
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity: capacity.max(1),
+            in_flight: HashSet::new(),
+            accepted: HashSet::new(),
+            accepted_order: VecDeque::new(),
+        }
+    }
+
+    pub fn begin(&mut self, operation_id: &MessageOperationId) -> MessageOperationStart {
+        if self.accepted.contains(operation_id) {
+            return MessageOperationStart::AcceptedDuplicate;
+        }
+        if !self.in_flight.insert(operation_id.clone()) {
+            return MessageOperationStart::InFlight;
+        }
+        MessageOperationStart::New
+    }
+
+    pub fn accepted(&mut self, operation_id: MessageOperationId) {
+        self.in_flight.remove(&operation_id);
+        if self.accepted.insert(operation_id.clone()) {
+            self.accepted_order.push_back(operation_id);
+        }
+        while self.accepted_order.len() > self.capacity {
+            if let Some(expired) = self.accepted_order.pop_front() {
+                self.accepted.remove(&expired);
+            }
+        }
+    }
+
+    pub fn failed(&mut self, operation_id: &MessageOperationId) {
+        self.in_flight.remove(operation_id);
+    }
 }
 
 impl std::fmt::Debug for OutboundMessage {
@@ -316,6 +392,8 @@ pub enum OutboundMessageError {
     InvalidRecipient,
     #[error("message body must contain between 1 and 2000 bytes")]
     InvalidBody,
+    #[error("message operation identifier is invalid")]
+    InvalidOperationId,
     #[error("message transport failed")]
     TransportFailed,
 }
@@ -359,24 +437,26 @@ impl Default for ImsgMapBackend {
 impl MapSyncBackend for ImsgMapBackend {
     type Error = ImsgMapError;
 
-    fn sync_inbox(&self) -> Result<(), Self::Error> {
-        let status = Command::new(&self.executable)
-            .args(["sync", "--folder", "inbox"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_err(|_| ImsgMapError::Spawn)?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(ImsgMapError::Failed)
+    fn sync_conversations(&self) -> Result<(), Self::Error> {
+        for folder in ["inbox", "sent"] {
+            let status = Command::new(&self.executable)
+                .args(["sync", "--folder", folder])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|_| ImsgMapError::Spawn)?;
+            if !status.success() {
+                return Err(ImsgMapError::Failed);
+            }
         }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MockBackend {
@@ -387,7 +467,7 @@ mod tests {
     impl MapSyncBackend for MockBackend {
         type Error = ();
 
-        fn sync_inbox(&self) -> Result<(), Self::Error> {
+        fn sync_conversations(&self) -> Result<(), Self::Error> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.succeeds.then_some(()).ok_or(())
         }
@@ -498,5 +578,59 @@ mod tests {
             OutboundMessage::new("5550100".to_owned(), "x".repeat(2_001)).unwrap_err(),
             OutboundMessageError::InvalidBody
         );
+    }
+
+    #[test]
+    fn operation_ids_validate_redact_and_normalize() {
+        let operation_id = MessageOperationId::new("A1".repeat(16)).unwrap();
+        assert_eq!(operation_id.0, "a1".repeat(16));
+        assert!(!format!("{operation_id:?}").contains("a1a1"));
+        for invalid in ["", "00", "g0g0g0g0g0g0g0g0g0g0g0g0g0g0g0g0"] {
+            assert!(MessageOperationId::new(invalid.to_owned()).is_err());
+        }
+    }
+
+    #[test]
+    fn operation_registry_suppresses_inflight_and_accepted_duplicates() {
+        let first = MessageOperationId::new("01".repeat(16)).unwrap();
+        let second = MessageOperationId::new("02".repeat(16)).unwrap();
+        let mut registry = MessageOperationRegistry::new(1);
+
+        assert_eq!(registry.begin(&first), MessageOperationStart::New);
+        assert_eq!(registry.begin(&first), MessageOperationStart::InFlight);
+        registry.accepted(first.clone());
+        assert_eq!(
+            registry.begin(&first),
+            MessageOperationStart::AcceptedDuplicate
+        );
+
+        assert_eq!(registry.begin(&second), MessageOperationStart::New);
+        registry.failed(&second);
+        assert_eq!(registry.begin(&second), MessageOperationStart::New);
+        registry.accepted(second);
+        assert_eq!(registry.begin(&first), MessageOperationStart::New);
+    }
+
+    #[test]
+    fn imsg_conversation_sync_scopes_to_inbox_and_sent() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("imsg-fixture");
+        let record = directory.path().join("calls");
+        std::fs::write(
+            &executable,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\n",
+                record.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        ImsgMapBackend::new(executable)
+            .sync_conversations()
+            .unwrap();
+        let calls = std::fs::read_to_string(record).unwrap();
+        assert_eq!(calls, "sync --folder inbox\nsync --folder sent\n");
+        assert!(!calls.contains("deleted"));
     }
 }

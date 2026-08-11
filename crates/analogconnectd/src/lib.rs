@@ -1,17 +1,20 @@
+pub mod ancs_groups;
+pub mod ancs_transport;
 pub mod audio;
 pub mod auth;
 pub mod contacts;
+pub mod conversations;
 pub mod hfp;
 pub mod media_auth;
 pub mod messages;
 mod process;
 
 use std::{
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-use analogconnect_core::SystemStatus;
+use analogconnect_core::{ContactSource, SystemStatus};
 use audio::{
     AudioBridge, AudioBridgeSummary, AudioStateBackend, LiveAudioBridge, PipeWireAudioStateBackend,
     PwDumpRunner, ScoNodeError, ScoNodeLocator, ScoTeardownWatchdog,
@@ -21,19 +24,28 @@ use axum::{
     Json, Router,
     body::Bytes,
     extract::{
-        State, WebSocketUpgrade,
+        Query, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
     http::{HeaderMap, HeaderValue, StatusCode, header},
     routing::get,
 };
-use contacts::ContactSummary;
+use contacts::{ContactItem, ContactPage, ContactStore, ContactSummary, ImsgContactSource};
+use conversations::{
+    ConversationAliases, ConversationError, ConversationItem, ConversationKindResponse,
+    ConversationPage, ConversationRepository, ImsgConversationRepository, MAX_PAGE_SIZE,
+    MessageDirection, MessageDirectionResponse, MessageItem, MessagePage, PageCursor,
+};
 use futures_util::{SinkExt, StreamExt};
 use hfp::{
     BusctlRunner, HfpCommandBackend, HfpStateBackend, WirePlumberBackend, WirePlumberBackendError,
 };
 use media_auth::{MediaSessionRegistry, OsRandomSource};
-use messages::{ImsgMapBackend, MapSendBackend, MessageSyncSummary, OutboundMessage};
+use messages::{
+    ImsgMapBackend, MapSendBackend, MessageOperationId, MessageOperationRegistry,
+    MessageOperationStart, MessageSyncCoordinator, MessageSyncScheduler, MessageSyncSummary,
+    OutboundMessage,
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
@@ -43,10 +55,15 @@ pub const PROTOCOL_VERSION: u16 = 1;
 pub struct AppState {
     status: Arc<RwLock<SystemStatus>>,
     contact_summary: Arc<RwLock<ContactSummary>>,
+    contact_store: Arc<ContactStore>,
     message_summary: Arc<RwLock<MessageSyncSummary>>,
+    message_sync_coordinator: Option<Arc<MessageSyncCoordinator<ImsgMapBackend>>>,
     audio_bridge: Arc<AudioBridge>,
     auth_tokens: Arc<AuthTokens>,
     message_sender: Arc<dyn MapSendBackend>,
+    message_operations: Arc<Mutex<MessageOperationRegistry>>,
+    conversation_repository: ConversationRepository,
+    conversation_aliases: Arc<Mutex<ConversationAliases>>,
     call_backend: Arc<dyn HfpCommandBackend<Error = WirePlumberBackendError>>,
     hfp_state_backend: Option<Arc<dyn HfpStateBackend<Error = WirePlumberBackendError>>>,
     audio_state_backend: Option<Arc<dyn AudioStateBackend<Error = ScoNodeError>>>,
@@ -73,6 +90,10 @@ impl AppState {
                 PwDumpRunner::default(),
             ))),
         )
+        .with_conversation_repository(ConversationRepository::Imsg(Arc::new(
+            ImsgConversationRepository::new(),
+        )))
+        .with_message_sync_coordinator()
     }
 
     pub fn with_message_sender(
@@ -115,12 +136,19 @@ impl AppState {
         Self {
             status: Arc::new(RwLock::new(status)),
             contact_summary: Arc::new(RwLock::new(ContactSummary::default())),
+            contact_store: Arc::new(
+                ContactStore::in_memory().expect("in-memory contact store initialization failed"),
+            ),
             message_summary: Arc::new(RwLock::new(MessageSyncSummary::default())),
+            message_sync_coordinator: None,
             audio_bridge: Arc::new(
                 AudioBridge::new(64).expect("fixed audio queue capacity is valid"),
             ),
             auth_tokens: Arc::new(auth_tokens),
             message_sender,
+            message_operations: Arc::new(Mutex::new(MessageOperationRegistry::new(256))),
+            conversation_repository: ConversationRepository::unavailable(),
+            conversation_aliases: Arc::new(Mutex::new(ConversationAliases::default())),
             call_backend,
             hfp_state_backend,
             audio_state_backend,
@@ -132,6 +160,79 @@ impl AppState {
             media_backend: Arc::new(PipeWireMediaBackend),
             started_at: Instant::now(),
         }
+    }
+
+    #[must_use]
+    pub fn with_conversation_repository(mut self, repository: ConversationRepository) -> Self {
+        self.conversation_repository = repository;
+        self
+    }
+
+    #[must_use]
+    pub fn with_contact_store(mut self, store: Arc<ContactStore>) -> Self {
+        self.contact_store = store;
+        self
+    }
+
+    fn with_message_sync_coordinator(mut self) -> Self {
+        self.message_sync_coordinator = Some(Arc::new(MessageSyncCoordinator::new(
+            ImsgMapBackend::default(),
+            MessageSyncScheduler::new(Duration::from_secs(30), Duration::from_secs(90)),
+        )));
+        self
+    }
+
+    pub fn start_message_sync_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        let coordinator = self.message_sync_coordinator.clone()?;
+        Some(tokio::spawn(async move {
+            let started_at = Instant::now();
+            loop {
+                let tick_coordinator = coordinator.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    tick_coordinator.tick(started_at.elapsed())
+                })
+                .await;
+                if !matches!(result, Ok(Ok(()))) {
+                    tracing::warn!(
+                        event = "message_sync_failed",
+                        "message synchronization failed with redacted diagnostics"
+                    );
+                }
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        }))
+    }
+
+    pub fn start_contact_sync_task(&self) -> tokio::task::JoinHandle<()> {
+        let store = self.contact_store.clone();
+        let shared_summary = self.contact_summary.clone();
+        tokio::spawn(async move {
+            loop {
+                let tick_store = store.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    let contacts = ImsgContactSource::default().pull_all().map_err(|_| ())?;
+                    let mut summary = tick_store.replace_all(&contacts).map_err(|_| ())?;
+                    summary.last_sync_unix_seconds = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .ok()
+                        .map(|duration| duration.as_secs());
+                    Ok::<_, ()>(summary)
+                })
+                .await;
+                match result {
+                    Ok(Ok(summary)) => {
+                        *shared_summary.write().await = summary;
+                    }
+                    Ok(Err(())) | Err(_) => {
+                        tracing::warn!(
+                            event = "contact_sync_failed",
+                            "contact synchronization failed with redacted diagnostics"
+                        );
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(15 * 60)).await;
+            }
+        })
     }
 
     async fn refresh_runtime_status(&self) {
@@ -222,8 +323,14 @@ pub fn app(state: AppState) -> Router {
         .route("/api/v1/health", get(health))
         .route("/api/v1/status", get(status))
         .route("/api/v1/contacts/summary", get(contact_summary))
+        .route("/api/v2/contacts/search", axum::routing::post(contact_page))
         .route("/api/v1/messages/summary", get(message_summary))
         .route("/api/v1/messages", axum::routing::post(send_message))
+        .route("/api/v2/conversations", get(conversation_page))
+        .route(
+            "/api/v2/conversations/messages",
+            axum::routing::post(conversation_messages),
+        )
         .route(
             "/api/v1/calls/commands",
             axum::routing::post(execute_call_command),
@@ -263,17 +370,79 @@ async fn contact_summary(
     Ok(Json(state.contact_summary.read().await.clone()))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ContactPageRequest {
+    query: Option<String>,
+    cursor: Option<String>,
+    limit: Option<usize>,
+}
+
+async fn contact_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(HeaderMap, Json<ContactPage>), StatusCode> {
+    authorize(&state, &headers)?;
+    if body.len() > 1024 {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    let request: ContactPageRequest =
+        serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let query = request.query.unwrap_or_default();
+    if query.chars().count() > 100 || query.contains(['\r', '\n', '\0']) {
+        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    let cursor = PageCursor::parse(request.cursor.as_deref()).map_err(conversation_status)?;
+    let limit = page_limit(request.limit)?;
+    let fetch_limit =
+        u16::try_from(limit.saturating_add(1)).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    let offset = u16::try_from(cursor.offset()).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    let store = state.contact_store.clone();
+    let mut contacts =
+        tokio::task::spawn_blocking(move || store.search_names_page(&query, fetch_limit, offset))
+            .await
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let has_more = contacts.len() > limit;
+    contacts.truncate(limit);
+    let items = contacts
+        .into_iter()
+        .map(ContactItem::from)
+        .collect::<Vec<_>>();
+    let next_cursor = has_more.then(|| cursor.advance(items.len()).encode());
+    Ok((
+        private_response_headers(),
+        Json(ContactPage { items, next_cursor }),
+    ))
+}
+
 async fn message_summary(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<MessageSyncSummary>, StatusCode> {
     authorize(&state, &headers)?;
+    if let Some(coordinator) = &state.message_sync_coordinator {
+        return coordinator
+            .summary()
+            .map(Json)
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE);
+    }
     Ok(Json(state.message_summary.read().await.clone()))
 }
 
 #[derive(Debug, Serialize)]
 struct SendMessageResponse {
     accepted: bool,
+    duplicate: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SendMessageRequest {
+    recipient: String,
+    body: String,
+    operation_id: Option<String>,
 }
 
 async fn send_message(
@@ -286,20 +455,233 @@ async fn send_message(
     if body.len() > 4096 {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
-    let request: OutboundMessage =
+    let request: SendMessageRequest =
         serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
     let message = OutboundMessage::new(request.recipient, request.body)
         .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    let operation_id = request
+        .operation_id
+        .map(MessageOperationId::new)
+        .transpose()
+        .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    if let Some(operation_id) = &operation_id {
+        let start = state
+            .message_operations
+            .lock()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .begin(operation_id);
+        match start {
+            MessageOperationStart::AcceptedDuplicate => {
+                return Ok((
+                    StatusCode::ACCEPTED,
+                    Json(SendMessageResponse {
+                        accepted: true,
+                        duplicate: true,
+                    }),
+                ));
+            }
+            MessageOperationStart::InFlight => return Err(StatusCode::CONFLICT),
+            MessageOperationStart::New => {}
+        }
+    }
     let sender = state.message_sender.clone();
-    tokio::task::spawn_blocking(move || sender.send(&message))
+    let result = tokio::task::spawn_blocking(move || sender.send(&message))
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .and_then(|result| result.map_err(|_| StatusCode::BAD_GATEWAY));
+    if let Some(operation_id) = operation_id {
+        let mut operations = state
+            .message_operations
+            .lock()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if result.is_ok() {
+            operations.accepted(operation_id);
+        } else {
+            operations.failed(&operation_id);
+        }
+    }
+    result?;
     Ok((
         StatusCode::ACCEPTED,
-        Json(SendMessageResponse { accepted: true }),
+        Json(SendMessageResponse {
+            accepted: true,
+            duplicate: false,
+        }),
     ))
     .inspect(|_| tracing::info!(event = "message_send_accepted", "message command accepted"))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationPageQuery {
+    cursor: Option<String>,
+    limit: Option<usize>,
+}
+
+async fn conversation_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ConversationPageQuery>,
+) -> Result<(HeaderMap, Json<ConversationPage>), StatusCode> {
+    authorize(&state, &headers)?;
+    let cursor = PageCursor::parse(query.cursor.as_deref()).map_err(conversation_status)?;
+    let limit = page_limit(query.limit)?;
+    let rows = state
+        .conversation_repository
+        .conversations()
+        .await
+        .map_err(conversation_status)?;
+    let start = cursor.offset().min(rows.len());
+    let end = start.saturating_add(limit).min(rows.len());
+    let mut display_names = Vec::with_capacity(end.saturating_sub(start));
+    for row in &rows[start..end] {
+        let display_name = if row.participant_count <= 1 && !row.is_ancs_group {
+            let store = state.contact_store.clone();
+            let address = row.display_address.clone();
+            tokio::task::spawn_blocking(move || store.lookup_display_name(&address))
+                .await
+                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
+                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
+        } else {
+            None
+        };
+        display_names.push(display_name);
+    }
+    let mut aliases = state
+        .conversation_aliases
+        .lock()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let mut items = Vec::with_capacity(end.saturating_sub(start));
+    for (row, display_name) in rows[start..end].iter().zip(display_names) {
+        let is_group = row.is_ancs_group || row.participant_count > 1;
+        let kind = if row.identity_conflict {
+            ConversationKindResponse::Ambiguous
+        } else if is_group {
+            ConversationKindResponse::Group
+        } else {
+            ConversationKindResponse::Private
+        };
+        let title = row
+            .group_title
+            .clone()
+            .or_else(|| display_name.clone())
+            .unwrap_or_else(|| row.display_address.clone());
+        let conversation_id = if row.is_ancs_group {
+            aliases
+                .expose_stable_id(&row.conversation_key)
+                .map_err(conversation_status)?
+        } else {
+            aliases
+                .id_for(&row.conversation_key, &mut OsRandomSource)
+                .map_err(conversation_status)?
+        };
+        let can_reply = !is_group && !row.identity_conflict;
+        items.push(ConversationItem {
+            conversation_id,
+            display_address: row.display_address.clone(),
+            display_name,
+            is_group,
+            reply_supported: can_reply,
+            latest_unix_millis: row.latest_unix_millis,
+            message_count: row.message_count,
+            unread_count: row.unread_count,
+            latest_outgoing_state: row.latest_outgoing_state.clone(),
+            kind,
+            title,
+            can_reply,
+            identity_conflict: row.identity_conflict,
+        });
+    }
+    let next_cursor = (end < rows.len()).then(|| cursor.advance(items.len()).encode());
+    Ok((
+        private_response_headers(),
+        Json(ConversationPage { items, next_cursor }),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationMessagesRequest {
+    conversation_id: String,
+    cursor: Option<String>,
+    limit: Option<usize>,
+}
+
+async fn conversation_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(HeaderMap, Json<MessagePage>), StatusCode> {
+    authorize(&state, &headers)?;
+    if body.len() > 4096 {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    let request: ConversationMessagesRequest =
+        serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let cursor = PageCursor::parse(request.cursor.as_deref()).map_err(conversation_status)?;
+    let limit = page_limit(request.limit)?;
+    let conversation_key = state
+        .conversation_aliases
+        .lock()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
+        .key_for(&request.conversation_id)
+        .map(str::to_owned)
+        .ok_or(StatusCode::GONE)?;
+    let offset = u16::try_from(cursor.offset()).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    let fetch_limit =
+        u16::try_from(limit.saturating_add(1)).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    let mut rows = state
+        .conversation_repository
+        .messages_for(&conversation_key, fetch_limit, offset)
+        .await
+        .map_err(conversation_status)?;
+    let has_more = rows.len() > limit;
+    rows.truncate(limit);
+    let items: Vec<_> = rows
+        .iter()
+        .map(|row| MessageItem {
+            message_id: format!("{:016x}", row.local_id),
+            timestamp_unix_millis: row.timestamp_unix_millis,
+            direction: match row.direction {
+                MessageDirection::Received => MessageDirectionResponse::Received,
+                MessageDirection::Sent => MessageDirectionResponse::Sent,
+            },
+            peer_address: row.address.clone(),
+            body: row.body.clone(),
+            read: row.read,
+            outgoing_state: row.outgoing_state.clone(),
+        })
+        .collect();
+    let next_cursor = has_more.then(|| cursor.advance(items.len()).encode());
+    Ok((
+        private_response_headers(),
+        Json(MessagePage { items, next_cursor }),
+    ))
+}
+
+fn page_limit(requested: Option<usize>) -> Result<usize, StatusCode> {
+    let limit = requested.unwrap_or(conversations::DEFAULT_PAGE_SIZE);
+    (1..=MAX_PAGE_SIZE)
+        .contains(&limit)
+        .then_some(limit)
+        .ok_or(StatusCode::UNPROCESSABLE_ENTITY)
+}
+
+const fn conversation_status(error: ConversationError) -> StatusCode {
+    match error {
+        ConversationError::InvalidCursor => StatusCode::UNPROCESSABLE_ENTITY,
+        ConversationError::Expired => StatusCode::GONE,
+        ConversationError::Unavailable | ConversationError::RandomUnavailable => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+    }
+}
+
+fn private_response_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    headers
 }
 
 #[derive(Deserialize)]
@@ -1016,6 +1398,166 @@ mod tests {
         assert_eq!(json.as_object().unwrap().len(), 3);
     }
 
+    fn contact_test_store() -> Arc<ContactStore> {
+        let store = ContactStore::in_memory().unwrap();
+        store
+            .replace_all(&[
+                analogconnect_core::Contact {
+                    display_name: Some("Example Alpha".to_owned()),
+                    phones: vec![
+                        analogconnect_core::PhoneNumber::parse("+1 202 555 0101").unwrap(),
+                    ],
+                },
+                analogconnect_core::Contact {
+                    display_name: Some("Example Beta".to_owned()),
+                    phones: vec![
+                        analogconnect_core::PhoneNumber::parse("+1 202 555 0102").unwrap(),
+                    ],
+                },
+            ])
+            .unwrap();
+        Arc::new(store)
+    }
+
+    #[tokio::test]
+    async fn contact_pages_use_private_bodies_pagination_and_no_store_headers() {
+        let unauthorized = app(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v2/contacts/search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"query":"sensitive"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let state = test_state().with_contact_store(contact_test_store());
+        let response = app(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v2/contacts/search")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"query":"Example","limit":1}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["items"].as_array().unwrap().len(), 1);
+        assert_eq!(json["items"][0]["display_name"], "Example Alpha");
+        assert_eq!(
+            json["items"][0]["phone_numbers"].as_array().unwrap().len(),
+            1
+        );
+        assert!(json["next_cursor"].as_str().is_some());
+        let sentinel = "synthetic-sensitive-sentinel";
+        assert!(
+            !format!(
+                "{:?}",
+                ContactItem {
+                    display_name: Some(sentinel.to_owned()),
+                    phone_numbers: vec![sentinel.to_owned()],
+                }
+            )
+            .contains(sentinel)
+        );
+    }
+
+    #[tokio::test]
+    async fn conversation_page_resolves_name_without_replacing_reply_address() {
+        let state = test_state()
+            .with_contact_store(contact_test_store())
+            .with_conversation_repository(ConversationRepository::InMemory(Arc::new(
+                conversations::InMemoryConversationRepository::new(
+                    vec![conversations::StoredConversation {
+                        conversation_key: "synthetic-contact-thread".to_owned(),
+                        display_address: "+1 202 555 0101".to_owned(),
+                        participant_count: 1,
+                        latest_unix_millis: 20,
+                        message_count: 1,
+                        unread_count: 0,
+                        latest_outgoing_state: None,
+                        group_title: None,
+                        is_ancs_group: false,
+                        identity_conflict: false,
+                    }],
+                    vec![],
+                ),
+            )));
+        let response = app(state)
+            .oneshot(authorized_request("/api/v2/conversations"))
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["items"][0]["display_name"], "Example Alpha");
+        assert_eq!(json["items"][0]["display_address"], "+1 202 555 0101");
+    }
+
+    #[tokio::test]
+    async fn ancs_group_and_conflict_api_are_stable_titled_and_fail_closed() {
+        let group_id = format!("ancs-v1-{}", "a".repeat(64));
+        let conflict_id = format!("ancs-v1-{}", "b".repeat(64));
+        let state = test_state().with_conversation_repository(ConversationRepository::InMemory(
+            Arc::new(conversations::InMemoryConversationRepository::new(
+                vec![
+                    conversations::StoredConversation {
+                        conversation_key: group_id.clone(),
+                        display_address: "synthetic-latest-sender".to_owned(),
+                        participant_count: 2,
+                        latest_unix_millis: 20,
+                        message_count: 2,
+                        unread_count: 1,
+                        latest_outgoing_state: None,
+                        group_title: Some("Synthetic Group Title".to_owned()),
+                        is_ancs_group: true,
+                        identity_conflict: false,
+                    },
+                    conversations::StoredConversation {
+                        conversation_key: conflict_id.clone(),
+                        display_address: "synthetic-other-sender".to_owned(),
+                        participant_count: 1,
+                        latest_unix_millis: 10,
+                        message_count: 1,
+                        unread_count: 0,
+                        latest_outgoing_state: None,
+                        group_title: Some("Synthetic Conflict Title".to_owned()),
+                        is_ancs_group: true,
+                        identity_conflict: true,
+                    },
+                ],
+                vec![],
+            )),
+        ));
+        let response = app(state)
+            .oneshot(authorized_request("/api/v2/conversations"))
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        let group = &json["items"][0];
+        assert_eq!(group["conversation_id"], group_id);
+        assert_eq!(group["title"], "Synthetic Group Title");
+        assert_ne!(group["title"], group["display_address"]);
+        assert_eq!(group["kind"], "group");
+        assert_eq!(group["can_reply"], false);
+        assert_eq!(group["reply_supported"], false);
+        let conflict = &json["items"][1];
+        assert_eq!(conflict["conversation_id"], conflict_id);
+        assert_eq!(conflict["kind"], "ambiguous");
+        assert_eq!(conflict["can_reply"], false);
+        assert_eq!(conflict["reply_supported"], false);
+        assert_eq!(conflict["identity_conflict"], true);
+    }
+
     #[tokio::test]
     async fn message_summary_does_not_expose_message_data() {
         let response = app(test_state())
@@ -1029,6 +1571,156 @@ mod tests {
         assert_eq!(json["mode"], "polling");
         assert_eq!(json["successful_syncs"], 0);
         assert_eq!(json.as_object().unwrap().len(), 5);
+    }
+
+    fn conversation_test_state() -> AppState {
+        test_state().with_conversation_repository(ConversationRepository::InMemory(Arc::new(
+            conversations::InMemoryConversationRepository::new(
+                vec![
+                    conversations::StoredConversation {
+                        conversation_key: "synthetic-key-new".to_owned(),
+                        display_address: "synthetic-address-new".to_owned(),
+                        participant_count: 1,
+                        latest_unix_millis: 20,
+                        message_count: 2,
+                        unread_count: 1,
+                        latest_outgoing_state: None,
+                        group_title: None,
+                        is_ancs_group: false,
+                        identity_conflict: false,
+                    },
+                    conversations::StoredConversation {
+                        conversation_key: "synthetic-key-old".to_owned(),
+                        display_address: "synthetic-address-old".to_owned(),
+                        participant_count: 2,
+                        latest_unix_millis: 10,
+                        message_count: 1,
+                        unread_count: 0,
+                        latest_outgoing_state: Some("sent_confirmed".to_owned()),
+                        group_title: None,
+                        is_ancs_group: false,
+                        identity_conflict: false,
+                    },
+                ],
+                vec![
+                    conversations::StoredMessage {
+                        local_id: 2,
+                        address: "synthetic-address-new".to_owned(),
+                        conversation_key: "synthetic-key-new".to_owned(),
+                        timestamp_unix_millis: 20,
+                        direction: conversations::MessageDirection::Received,
+                        body: "synthetic-private-new".to_owned(),
+                        read: false,
+                        outgoing_state: None,
+                    },
+                    conversations::StoredMessage {
+                        local_id: 1,
+                        address: "synthetic-address-new".to_owned(),
+                        conversation_key: "synthetic-key-new".to_owned(),
+                        timestamp_unix_millis: 15,
+                        direction: conversations::MessageDirection::Sent,
+                        body: "synthetic-private-old".to_owned(),
+                        read: true,
+                        outgoing_state: Some("sent_confirmed".to_owned()),
+                    },
+                ],
+            ),
+        )))
+    }
+
+    #[tokio::test]
+    async fn conversation_pages_are_authenticated_bounded_and_not_cacheable() {
+        let unauthorized = app(conversation_test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v2/conversations?limit=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let first = app(conversation_test_state())
+            .oneshot(authorized_request("/api/v2/conversations?limit=1"))
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+        assert_eq!(first.headers()["cache-control"], "no-store");
+        assert_eq!(first.headers()["pragma"], "no-cache");
+        let body = to_bytes(first.into_body(), 4096).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["items"].as_array().unwrap().len(), 1);
+        assert_eq!(json["items"][0]["display_address"], "synthetic-address-new");
+        assert_eq!(json["items"][0]["unread_count"], 1);
+        assert_eq!(json["items"][0]["is_group"], false);
+        assert_eq!(json["items"][0]["reply_supported"], true);
+        assert!(json["next_cursor"].as_str().is_some());
+        assert_eq!(
+            json["items"][0]["conversation_id"].as_str().unwrap().len(),
+            32
+        );
+    }
+
+    #[tokio::test]
+    async fn conversation_history_uses_opaque_id_and_private_request_body() {
+        let application = app(conversation_test_state());
+        let conversations = application
+            .clone()
+            .oneshot(authorized_request("/api/v2/conversations"))
+            .await
+            .unwrap();
+        let body = to_bytes(conversations.into_body(), 4096).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        let conversation_id = json["items"][0]["conversation_id"].as_str().unwrap();
+
+        let response = application
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v2/conversations/messages")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{"conversation_id":"{conversation_id}","limit":1}}"#
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["items"].as_array().unwrap().len(), 1);
+        assert_eq!(json["items"][0]["body"], "synthetic-private-new");
+        assert_eq!(json["items"][0]["direction"], "received");
+        assert_eq!(json["items"][0]["peer_address"], "synthetic-address-new");
+        assert!(json["next_cursor"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn conversation_routes_fail_closed_for_unavailable_store_and_expired_alias() {
+        let unavailable = app(test_state())
+            .oneshot(authorized_request("/api/v2/conversations"))
+            .await
+            .unwrap();
+        assert_eq!(unavailable.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let expired = app(conversation_test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v2/conversations/messages")
+                    .header("authorization", format!("Bearer {}", test_token_text()))
+                    .body(Body::from(
+                        r#"{"conversation_id":"00000000000000000000000000000000"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(expired.status(), StatusCode::GONE);
     }
 
     #[tokio::test]
@@ -1051,7 +1743,72 @@ mod tests {
         assert_eq!(response.status(), StatusCode::ACCEPTED);
         let body = to_bytes(response.into_body(), 1024).await.unwrap();
         let json: Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json, serde_json::json!({ "accepted": true }));
+        assert_eq!(
+            json,
+            serde_json::json!({ "accepted": true, "duplicate": false })
+        );
+    }
+
+    #[tokio::test]
+    async fn outbound_message_operation_id_suppresses_duplicate_transport_calls() {
+        let sender = Arc::new(MockMessageSender {
+            calls: AtomicUsize::new(0),
+        });
+        let application = app(AppState::with_message_sender(
+            SystemStatus::default(),
+            AuthToken::new(test_token_text()).unwrap(),
+            sender.clone(),
+        ));
+        let payload = r#"{"recipient":"5550100","body":"synthetic message","operation_id":"01010101010101010101010101010101"}"#;
+
+        for duplicate in [false, true] {
+            let response = application
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/v1/messages")
+                        .header("authorization", format!("Bearer {}", test_token_text()))
+                        .header("content-type", "application/json")
+                        .body(Body::from(payload))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::ACCEPTED);
+            let body = to_bytes(response.into_body(), 1024).await.unwrap();
+            let json: Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["duplicate"], duplicate);
+        }
+        assert_eq!(sender.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn outbound_message_rejects_invalid_operation_id_without_transport_call() {
+        let sender = Arc::new(MockMessageSender {
+            calls: AtomicUsize::new(0),
+        });
+        let response = app(AppState::with_message_sender(
+            SystemStatus::default(),
+            AuthToken::new(test_token_text()).unwrap(),
+            sender.clone(),
+        ))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/messages")
+                .header("authorization", format!("Bearer {}", test_token_text()))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"recipient":"5550100","body":"synthetic message","operation_id":"invalid"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(sender.calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

@@ -1,0 +1,40 @@
+[package]
+name = "imsg-session"
+description = "Session lifecycle — SDP lookup, RFCOMM connect, OBEX handshake, reconnect, and MNS relay"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+anyhow = "1.0.102"
+bluer = { version = "0.17.4", features = ["rfcomm"] }
+bytes = "1"
+chrono = "0.4"
+config = { package = "imsg-config", version = "0.3.1", path = "../imsg-config" }
+futures = "0.3.32"
+map-core = { package = "imsg-map", version = "0.3.1", path = "../imsg-map" }
+pbap-core = { package = "imsg-pbap", version = "0.3.1", path = "../imsg-pbap" }
+store = { package = "imsg-store", version = "0.3.1", path = "../imsg-store" }
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-retry = "0.3.1"
+tokio-util = "0.7.18"
+tracing = "0.1.44"
+transport = { package = "imsg-transport", version = "0.3.1", path = "../imsg-transport" }
+uniffi = { version = "0.31.1", optional = true }
+
+[dev-dependencies]
+futures = "0.3.32"
+obex-core = { package = "imsg-obex", version = "0.3.1", path = "../imsg-obex" }
+secrecy = "0.10"
+tempfile = "3"
+tokio = { version = "1.52.3", features = ["full"] }
+
+[features]
+ffi = ["dep:uniffi"]
+
+[lints]
+workspace = true

@@ -16,10 +16,16 @@ The iPhone remains the cellular phone. A Raspberry Pi connects it to an Android
 - Protects Pi-to-Android traffic with HTTPS certificate pinning and authentication.
 - Keeps credentials, message contents, contact details, phone numbers, and audio out of logs.
 
-Real-device testing has verified message delivery, call controls, two-way intelligible
-audio, speakerphone routing, and automatic Pi address rediscovery. Sustained-call
-latency and audio smoothing are still being tuned. See
+Real-device testing has verified call controls, clear two-way call audio,
+speakerphone routing, automatic Pi address rediscovery, and outbound message
+delivery. A read-only service-sandbox regression that temporarily broke messaging
+has been corrected with narrowly scoped imsg writable paths and hardware-verified.
+See
 [`docs/current-state.md`](docs/current-state.md) for detailed evidence and remaining work.
+
+The path from the current engineering UI to the finished call, conversation,
+contacts, notification, recovery, and release experience is tracked in
+[`docs/product-roadmap.md`](docs/product-roadmap.md).
 
 ## Backend development
 
@@ -42,9 +48,9 @@ curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/a
 curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/audio/summary
 ```
 
-The daemon includes a privacy-safe `imsg` PBAP adapter and SQLite contact store,
-but does not trigger hardware synchronization automatically or expose contact
-records through the API. Every endpoint except health requires constant-time bearer
+The daemon includes a privacy-safe `imsg` PBAP adapter, SQLite contact store, and
+automatic polling synchronization for the MAP inbox and sent folders. Contact
+records are not yet exposed through the API. Every endpoint except health requires constant-time bearer
 authentication. Plaintext remains loopback-only. See
 [`docs/control-plane-security.md`](docs/control-plane-security.md) for the explicit
 HTTPS configuration required before binding to a LAN address.

@@ -21,6 +21,37 @@ pub struct ContactSummary {
     pub last_sync_unix_seconds: Option<u64>,
 }
 
+#[derive(Clone, Serialize)]
+pub struct ContactItem {
+    pub display_name: Option<String>,
+    pub phone_numbers: Vec<String>,
+}
+
+impl std::fmt::Debug for ContactItem {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ContactItem([private fields redacted])")
+    }
+}
+
+impl From<Contact> for ContactItem {
+    fn from(contact: Contact) -> Self {
+        Self {
+            display_name: contact.display_name,
+            phone_numbers: contact
+                .phones
+                .into_iter()
+                .map(|phone| phone.display)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContactPage {
+    pub items: Vec<ContactItem>,
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum ImsgSourceError {
     #[error("PBAP client could not be started")]
@@ -178,6 +209,15 @@ impl ContactStore {
     }
 
     pub fn search_names(&self, query: &str, limit: u16) -> Result<Vec<Contact>, ContactStoreError> {
+        self.search_names_page(query, limit, 0)
+    }
+
+    pub fn search_names_page(
+        &self,
+        query: &str,
+        limit: u16,
+        offset: u16,
+    ) -> Result<Vec<Contact>, ContactStoreError> {
         let escaped = query
             .replace('\\', "\\\\")
             .replace('%', "\\%")
@@ -190,9 +230,9 @@ impl ContactStore {
         let mut statement = connection.prepare(
             "SELECT id, display_name FROM contacts
              WHERE display_name LIKE ?1 ESCAPE '\\' COLLATE NOCASE
-             ORDER BY display_name COLLATE NOCASE LIMIT ?2",
+             ORDER BY display_name COLLATE NOCASE, id LIMIT ?2 OFFSET ?3",
         )?;
-        let rows = statement.query_map(params![pattern, limit.min(100)], |row| {
+        let rows = statement.query_map(params![pattern, limit.min(101), offset], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
         })?;
 
@@ -205,6 +245,12 @@ impl ContactStore {
             });
         }
         Ok(contacts)
+    }
+
+    pub fn lookup_display_name(&self, number: &str) -> Result<Option<String>, ContactStoreError> {
+        Ok(self
+            .lookup_caller(number)?
+            .and_then(|contact| contact.display_name))
     }
 
     pub fn lookup_caller(&self, incoming: &str) -> Result<Option<Contact>, ContactStoreError> {
@@ -375,6 +421,25 @@ mod tests {
         let matches = store.search_names("alpha", 10).unwrap();
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].display_name.as_deref(), Some("Example Alpha"));
+    }
+
+    #[test]
+    fn search_pages_and_unique_name_lookup_preserve_number_target() {
+        let store = ContactStore::in_memory().unwrap();
+        let alpha = contact("Example Alpha", &["+1", "202", "555", "0101"]);
+        let beta = contact("Example Beta", &["+1", "202", "555", "0102"]);
+        store.replace_all(&[alpha, beta]).unwrap();
+
+        let page = store.search_names_page("Example", 1, 1).unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].display_name.as_deref(), Some("Example Beta"));
+        assert_eq!(
+            store
+                .lookup_display_name("+1 (202) 555-0101")
+                .unwrap()
+                .as_deref(),
+            Some("Example Alpha")
+        );
     }
 
     #[test]

@@ -41,6 +41,16 @@ javac -d "$test_classes_dir" \
     "$script_dir/src/com/analogconnect/client/CertificatePin.java" \
     "$script_dir/src/com/analogconnect/client/DiscoveryTarget.java" \
     "$script_dir/src/com/analogconnect/client/MediaSessionCredentials.java" \
+    "$script_dir/src/com/analogconnect/client/MessageOperationId.java" \
+    "$script_dir/src/com/analogconnect/client/MessageSendDraft.java" \
+    "$script_dir/src/com/analogconnect/client/ConversationSummary.java" \
+    "$script_dir/src/com/analogconnect/client/ConversationMessage.java" \
+    "$script_dir/src/com/analogconnect/client/ConversationPageData.java" \
+    "$script_dir/src/com/analogconnect/client/ConversationController.java" \
+    "$script_dir/src/com/analogconnect/client/CallController.java" \
+    "$script_dir/src/com/analogconnect/client/ContactListItem.java" \
+    "$script_dir/src/com/analogconnect/client/ContactController.java" \
+    "$script_dir/src/com/analogconnect/client/DemoFixtures.java" \
     "$script_dir/src/com/analogconnect/client/WebSocketWire.java" \
     "$script_dir/src/com/analogconnect/client/CallAudioPump.java" \
     "$script_dir/src/com/analogconnect/client/TelecomDialTarget.java" \
@@ -51,6 +61,14 @@ javac -d "$test_classes_dir" \
     "$script_dir/test/com/analogconnect/client/DiscoveryTargetTest.java" \
     "$script_dir/test/com/analogconnect/client/AudioDeviceConfigTest.java" \
     "$script_dir/test/com/analogconnect/client/MediaSessionCredentialsTest.java" \
+    "$script_dir/test/com/analogconnect/client/MessageOperationIdTest.java" \
+    "$script_dir/test/com/analogconnect/client/MessageSendDraftTest.java" \
+    "$script_dir/test/com/analogconnect/client/ConversationModelTest.java" \
+    "$script_dir/test/com/analogconnect/client/ConversationControllerTest.java" \
+    "$script_dir/test/com/analogconnect/client/CallControllerTest.java" \
+    "$script_dir/test/com/analogconnect/client/ContactModelTest.java" \
+    "$script_dir/test/com/analogconnect/client/ContactControllerTest.java" \
+    "$script_dir/test/com/analogconnect/client/DemoFixturesTest.java" \
     "$script_dir/test/com/analogconnect/client/WebSocketWireTest.java" \
     "$script_dir/test/com/analogconnect/client/CallAudioPumpTest.java" \
     "$script_dir/test/com/analogconnect/client/TelecomDialTargetTest.java"
@@ -61,6 +79,14 @@ java -cp "$test_classes_dir" com.analogconnect.client.CertificatePinTest
 java -cp "$test_classes_dir" com.analogconnect.client.DiscoveryTargetTest
 java -cp "$test_classes_dir" com.analogconnect.client.AudioDeviceConfigTest
 java -cp "$test_classes_dir" com.analogconnect.client.MediaSessionCredentialsTest
+java -cp "$test_classes_dir" com.analogconnect.client.MessageOperationIdTest
+java -cp "$test_classes_dir" com.analogconnect.client.MessageSendDraftTest
+java -cp "$test_classes_dir" com.analogconnect.client.ConversationModelTest
+java -cp "$test_classes_dir" com.analogconnect.client.ConversationControllerTest
+java -cp "$test_classes_dir" com.analogconnect.client.CallControllerTest
+java -cp "$test_classes_dir" com.analogconnect.client.ContactModelTest
+java -cp "$test_classes_dir" com.analogconnect.client.ContactControllerTest
+java -cp "$test_classes_dir" com.analogconnect.client.DemoFixturesTest
 java -cp "$test_classes_dir" com.analogconnect.client.WebSocketWireTest
 java -cp "$test_classes_dir" com.analogconnect.client.CallAudioPumpTest
 java -cp "$test_classes_dir" com.analogconnect.client.TelecomDialTargetTest

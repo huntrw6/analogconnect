@@ -6,14 +6,41 @@ interpretations are superseded.
 
 ## Current implementation
 
+Status updated 2026-08-10 after the product UI and offline-fixture checkpoint.
+
+## Android product UI checkpoint
+
+- `VERIFIED_AUTOMATED`: the API-27 application now launches into a user-facing
+  communication shell with Messages, Calls, Contacts, and Settings navigation.
+  The previous diagnostic launcher remains intact under Settings → Developer
+  Tools and no longer dominates the normal journey.
+- `VERIFIED_AUTOMATED`: conversation rows render human titles, group avatars,
+  timestamps, and unread emphasis; threads render conventional left/right
+  bubbles and sender labels for group messages. Stable `ancs-v1-*` identifiers
+  remain model-only and are never used as visible titles.
+- `VERIFIED_AUTOMATED`: direct conversations and the dedicated new-message flow
+  can send through the real authenticated API. Group and ambiguous composers
+  fail closed with user-facing explanations.
+- `VERIFIED_AUTOMATED`: the calls screen provides a familiar 12-key dial pad,
+  incoming answer/decline, dialing/active/ending/recovery states, automatic call
+  audio, speaker routing, hangup, and an active-call DTMF keypad. Navigation is
+  hidden during non-idle calls to avoid disguising active call state.
+- `VERIFIED_AUTOMATED`: an explicitly enabled offline demo source exercises
+  direct, named group, unnamed group, unread, outgoing failure, ambiguity,
+  multiple-sender, contact-search, and empty-search states. It is in-memory and
+  cannot write to the encrypted production store.
+- `UNKNOWN`: visual validation on the physical API-27 phone and emulator remains
+  pending. The current environment has build tooling but no configured runnable
+  emulator.
+
 - Milestone 0A baseline and Milestone 1 backend skeleton are complete.
 - Milestone 2 contact parsing is validated against the real iPhone using an
   aggregate-only pipeline; persistence/search remain hardware-free validated.
 - Milestone 3 MAP synchronization orchestration is implemented around imsg's
   encrypted store and awaits notification behavior validation with the iPhone.
-- Milestone 4 outbound MAP messaging is complete: validation, authenticated API,
-  redacted transport, Android confirmation UI, iPhone acceptance, and recipient
-  delivery have been verified.
+- Milestone 4 outbound MAP messaging has a hardware-verified earlier success, but
+  the latest Android-originated retest failed and the path is not currently
+  considered reliable.
 - Milestone 5 HFP call-control domain, AT encoding, WirePlumber Telephony D-Bus
   adapter, authenticated API, and Android controls are implemented; live command
   effects on the iPhone still require guided validation.
@@ -77,6 +104,21 @@ bearer token and can perform privacy-safe health and authenticated status checks
 
 ### Contact synchronization software
 
+- `VERIFIED_HARDWARE`: the deployed periodic PBAP refresh loaded 438 contacts and
+  471 phone fields. The private API returned 100 named first-page items with more
+  available, and uniquely matched names for all seven current conversation rows;
+  aggregate validation emitted no names or numbers.
+- `VERIFIED_AUTOMATED`: `POST /api/v2/contacts/search` is authenticated, bounded,
+  paginated, body-based, no-store, and redacts diagnostics. Conversation summaries
+  preserve the phone-number routing target separately from the nullable display
+  name, preventing accidental sends to labels.
+- `VERIFIED_AUTOMATED`: Android provides **Open contacts**, name search, incremental
+  loading, contact-to-call actions, name-first conversation rendering, unknown
+  number fallback, and explicit context-unknown/private-message wording.
+- `VERIFIED_HARDWARE`: the matching daemon and signed APK are installed.
+- `UNKNOWN`: physical contact-list focus/layout and the correctness of displayed
+  private names await operator inspection.
+
 - `VERIFIED_AUTOMATED`: sanitized `imsg contacts --raw` output is parsed without
   logging or debug-printing names and numbers.
 - `VERIFIED_AUTOMATED`: complete contact snapshots replace SQLite state atomically;
@@ -102,6 +144,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
   exposed without addresses, handles, or message bodies.
 - `VERIFIED_AUTOMATED`: the `imsg` command adapter discards stdout and stderr and
   returns only redacted failure classes.
+- `VERIFIED_AUTOMATED`: the production daemon now starts a polling coordinator
+  immediately and every 30 seconds, synchronizes exactly the inbox and sent
+  folders, excludes deleted messages, and reports only aggregate/redacted state.
 - `DOCUMENTED`: local `imsg` 0.3.1 source provides encrypted persistence,
   incremental per-folder cursors, broker `Watch` events, and sync/outbox states.
 - `VERIFIED_HARDWARE`: a bounded real-iPhone inbox listing passed through the
@@ -121,10 +166,172 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_HARDWARE`: one deliberately confirmed Android-originated request was
   sent through iPhone MAP and received by the intended recipient. No private
   message fields were retained as evidence.
+- `FAILED`: the latest Android-originated outbound SMS retest did not work. No
+  recipient, body, or other private message data was retained.
+- `DOCUMENTED`: the installed user service runs with `ProtectHome=read-only`,
+  while installed `imsg 0.3.1` opens its encrypted SQLCipher message database for
+  every `send`; the store source requires a writable path. Its broker may also
+  write under the per-user state directory.
+- `INFERRED`: the service sandbox/store mismatch is the leading regression cause
+  because the hardened service was added after the earlier successful messaging
+  implementation, while calls and audio can continue without these `imsg` writes.
+- `VERIFIED_AUTOMATED`: the tracked and installed user service now retain
+  `ProtectHome=read-only` while granting write access only to imsg's per-user data
+  and state directories; the daemon restarted and remained active.
+- `VERIFIED_HARDWARE`: the operator confirmed that Android-originated texting
+  works correctly again after the minimal sandbox correction. This verifies the
+  service sandbox/store mismatch as the cause of the observed regression.
+- `VERIFIED_AUTOMATED`: optional 128-bit operation IDs now provide bounded
+  daemon-lifetime duplicate suppression; accepted duplicates do not invoke MAP a
+  second time, simultaneous duplicates fail closed, and identifiers redact from
+  diagnostics.
+- `VERIFIED_AUTOMATED`: new Android builds generate operation IDs with
+  `SecureRandom`, reuse the ID for an unchanged failed draft, disable sending while
+  a request is active, preserve failed compose text, and remain compatible with
+  the existing v1 endpoint.
+- `DOCUMENTED`: duplicate suppression does not yet survive daemon/app restart;
+  durable outbox status and reconciliation are part of the v2 messaging contract.
+- `VERIFIED_AUTOMATED`: API v2 conversation summaries and message history use
+  authenticated bounded pages, daemon-scoped opaque conversation IDs, canonical
+  cursors, private request bodies, no-store/no-cache responses, fixed unavailable
+  and expired states, and redacted domain diagnostics.
+- `VERIFIED_AUTOMATED`: a typed lazy adapter opens a synthetic imsg SQLCipher
+  store through the same query types used in production and maps concurrent
+  thread/history reads without parsing CLI output or exposing MAP handles.
+- `VERIFIED_AUTOMATED`: the API-27 Android conversation models/controllers and
+  signed APK build cover loading, empty, list, thread, fixed-error, retry,
+  compose/review/send, unread, and outgoing-state surfaces without logging private
+  data.
+- `VERIFIED_HARDWARE`: the deployed v2 daemon opened the real encrypted imsg store
+  and served the aggregate-only conversation endpoint successfully. Before
+  automatic sync the store was empty (`count=0`, `has_more=false`).
+- `VERIFIED_HARDWARE`: the automatic inbox/sent synchronization daemon is
+  installed and active. Its first real-iPhone checks reported two successful
+  synchronizations, zero failures, five conversation summaries, and no next page.
+- `VERIFIED_HARDWARE`: an aggregate-only history check loaded five messages from
+  one real conversation in correct newest-first order with no next page; no
+  address, body, identifier, or timestamp was emitted as evidence.
+- `VERIFIED_HARDWARE`: the signed conversation APK and latest v2 daemon are
+  installed on the physical devices.
+- `VERIFIED_HARDWARE`: the operator observed five populated rows and plausible
+  message content on the physical Android conversation screen.
+- `FAILED`: group messages are incorrectly split into per-phone-number rows. The
+  root cause is imsg 0.3.1 collapsing each MAP message to one peer address before
+  storing and aggregating it.
+- `DOCUMENTED`: MAP bMessages and the installed parser support an originator plus
+  multiple recipient vCards, but imsg 0.3.1 does not persist that participant set;
+  upstream 0.4.0 retains the same per-address thread model.
+- `VERIFIED_AUTOMATED`: the patched imsg ingestion preserves sorted/deduplicated
+  participant sets, retains peer keys for direct/outgoing rows, groups different
+  senders under one synthetic group key, refreshes metadata on existing handles,
+  and resets sync cursors once without deleting message content.
+- `VERIFIED_AUTOMATED`: API v2 marks group threads and exposes private sender labels;
+  the Android UI groups them, labels received messages by sender, and fails closed
+  on group replies until multi-recipient MAP push is implemented.
+- `INFERRED`: the participant-set key will match the iPhone's actual group identity
+  if its retrieved bMessages contain the complete originator/recipient vCard set.
+- `VERIFIED_HARDWARE`: the first participant-set deployment synchronized once with
+  zero failures but returned seven rows and zero detected groups. This demonstrates
+  that the iPhone payload does not provide enough vCard participants per message
+  for cardinality-only grouping; no unsafe group reply was enabled.
+- `DOCUMENTED`: the MAP message-listing format carries a separate opaque
+  `conversation_id`; imsg 0.3.1 ignores unknown listing attributes, including that
+  identity. The next correction preserves it and filters UI reads to inbox/sent.
+- `INFERRED`: grouping by the iPhone-provided MAP conversation identifier will
+  preserve the real group boundary without content/timestamp heuristics.
+- `VERIFIED_HARDWARE`: SDP advertises one MAP MAS record with message-listing v1.1
+  support and no conversation-version-counter feature. Before deploying the
+  explicit parameter-mask build, the privacy-safe validator observed seven
+  threads, zero stored MAP conversation identities, and zero groups.
+- `VERIFIED_HARDWARE`: after explicitly requesting every message-list attribute,
+  a complete sync still stored zero MAP conversation identities. The separate
+  MAP `x-bt/MAP-convo-listing` request was accepted but returned zero
+  conversations while the message store remained non-empty.
+- `DOCUMENTED`: Bluetooth MAP defines conversation listing as a distinct GET
+  operation with a conversation parameter mask and nested participant elements.
+  The implementation and aggregate-only probe follow that wire format.
+- `VERIFIED_HARDWARE`: the sole iPhone MAS record is MAP 1.4, MAS instance 0,
+  SMS_GSM, with raw `MapSupportedFeatures=0x0006027f`. It advertises
+  Messages-Listing v1.1 but not Conversation Listing, Event Report v1.2,
+  Conversation Version Counters, or MapSupportedFeatures-in-CONNECT. Therefore
+  omitting application parameter `0x29` from CONNECT is correct for this server.
+- `VERIFIED_HARDWARE`: a complete message-listing request returned OBEX `0xa0`,
+  `ListingSize=10`, and no `conversation_id`, `conversation_name`, `direction`, or
+  participant attributes. Conversation Listing returned OBEX `0xa0` with absent
+  `ListingSize`, an empty body, and no database/version identifiers.
+- `VERIFIED_HARDWARE`: a MAP 1.4 MNS listener captured controlled group and direct
+  `NewMessage` events. Both contained only `type`, `handle`, `folder`, and
+  `msg_type`; neither exposed conversation or participant metadata.
+- `VERIFIED_HARDWARE`: direct-GATT ANCS established an LE bearer and subscribed to
+  Notification Source and Data Source without changing pairing. Two controlled
+  group notifications had non-empty Title and Subtitle fields; a clean controlled
+  direct notification (and its duplicate update) had a non-empty Title and empty
+  Subtitle. This verifies stable group detection for the tested Messages setup,
+  but the privacy-safe structural capture does not yet prove a stable group name,
+  participant set, or reply target.
+- `VERIFIED_HARDWARE`: `ANCS_GROUP_DETECTION_ONLY`. MAP and ANCS do not currently
+  provide a verified group reply target, so group replies remain disabled and
+  direct threads remain supported.
+- `VERIFIED_HARDWARE`: `ANCS_STABLE_GROUP_IDENTITY_VERIFIED`. With one ephemeral
+  HMAC key, two different senders in Group A produced the same normalized
+  Subtitle HMAC, Group B produced a different HMAC, and a direct message had no
+  Subtitle. This is a privacy-safe local incoming/history key, not a reply target.
+- `VERIFIED_HARDWARE`: `ANCS_GROUP_THREADING_VERIFIED`. Plaintext controlled
+  inspection established that ANCS Title is the current sender, named-group
+  Subtitle is the exact Messages group name, unnamed-group Subtitle is Apple's
+  participant-generated label, and direct Subtitle is empty. Different senders in
+  the tested named group retained the same Subtitle.
+- `VERIFIED_AUTOMATED`: `normalize_ancs_subtitle_v1` applies Unicode NFKC, Unicode
+  case folding, whitespace collapse, and trimming. Non-empty Subtitles produce a
+  deterministic full-SHA256 `ancs-v1-…` ID with an explicit domain/version prefix;
+  empty Subtitles produce no group ID.
+- `VERIFIED_AUTOMATED`: the encrypted imsg migration persists ANCS group metadata,
+  display Subtitle, observed senders, NotificationUID assignment, first/last seen,
+  conflict state, and future alias/split records separately from immutable message
+  row IDs. Close/reopen tests preserve grouping and titles; conflicting assignment
+  evidence fails closed without rewriting the original assignment.
+- `VERIFIED_AUTOMATED`: a bounded ANCS/MAP correlation boundary matches normalized
+  Title to the resolved MAP sender plus a bounded time window, handles duplicate
+  UIDs and out-of-order arrival, rejects stale/competing candidates as ambiguous,
+  and atomically applies only proven groups to the encrypted store.
+- `VERIFIED_AUTOMATED`: API v2 exposes exact stable `ancs-v1-…` IDs, ANCS Subtitle
+  titles, explicit private/group/ambiguous kind, and disabled reply state for groups
+  and conflicts. Android accepts those IDs, renders the API title, merges assigned
+  senders through the shared conversation key, and cannot enter its private reply
+  flow for group or ambiguous rows.
+- `UNKNOWN`: no supervised production ANCS transport currently feeds the daemon
+  correlation boundary. The temporary direct-GATT script remains diagnostic only;
+  end-to-end live ANCS-backed Android threading is not yet integrated or claimed.
+- `VERIFIED_AUTOMATED`: the production ANCS protocol core strictly parses
+  Notification Source events, requests AppIdentifier/Title/Subtitle/size/date and
+  action labels without requesting Message body, reassembles bounded Data Source
+  fragments, serializes one Control Point request at a time, filters non-Messages
+  apps, suppresses duplicate/replayed UIDs, bounds queued/completed state, and
+  provides a subscription-ordering/reconnect supervisor with capped backoff. A
+  live BlueZ bearer and daemon task remain unintegrated and hardware-pending.
+- `UNKNOWN`: unnamed-group Subtitle stability across different senders and a
+  diagnostic restart awaits `ANCS-UNNAMED-GROUP-IDENTITY-001`.
+- `NOT VERIFIED`: group reply targeting remains unavailable and disabled.
+- `BLOCKED`: Apple's iOS 26.5 Accessory Notifications API formally exposes
+  `threadIdentifier`, notification/source identifiers, text-input actions, and
+  typed `NotificationResponse` values, but this Linux/Pi environment has no Mac,
+  Xcode, or iOS 26.5 SDK. Messages-specific field/action behavior and Personal
+  Team entitlement eligibility cannot be tested here.
 - `UNKNOWN`: sent-folder reflection, failure recovery, locked-iPhone behavior,
   MMS, and attachments.
 
 ### HFP call-control software
+
+- `VERIFIED_AUTOMATED`: the Android client has a dedicated state-driven call
+  screen with idle/dialing/incoming/active/ended/error surfaces, answer/reject/end
+  eligibility, a DTMF keypad, elapsed duration, speaker routing, fixed errors, and
+  automatic call-audio lifecycle. Pure controller tests cover state/control and
+  DTMF rules; the API-27 APK build and v2/v3 signatures pass.
+- `VERIFIED_HARDWARE`: that APK is installed on the target Android without
+  clearing enrollment or app data.
+- `UNKNOWN`: physical focus/layout, real screen state transitions, automatic
+  microphone/earpiece audio, speaker switching, DTMF, and teardown through this
+  new screen await the focused operator walkthrough.
 
 - `VERIFIED_AUTOMATED`: answer, reject, hangup, dial, DTMF, mute, and gain
   commands are validated against call state before reaching a backend.
@@ -204,6 +411,9 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `VERIFIED_HARDWARE`: Android microphone capture, earpiece routing, speakerphone
   routing, live PipeWire operation, authenticated media transport, and intelligible
   audio in both directions work during real iPhone calls.
+- `VERIFIED_HARDWARE`: on the latest operator test, a real phone call sounded good
+  on both ends. This supersedes the older statement that human-perceived audio
+  quality was still unknown, but does not yet prove long-duration stability.
 - `VERIFIED_HARDWARE`: Pi downlink delivery showed zero drops and at most about
   16 ms in-memory queueing during a sustained call; Android reported zero late and
   overflow frames after adaptive resynchronization.
@@ -344,13 +554,16 @@ bearer token and can perform privacy-safe health and authenticated status checks
 - `UNKNOWN`: MAP Message Notification Service behavior and reliable incremental sync.
 - `UNKNOWN`: whether iPhone MAP notifications remain reliable across idle periods,
   reconnects, and locked-device states; polling remains the safe default.
-- `VERIFIED_HARDWARE`: Android-to-Pi-to-iPhone MAP SMS sending and recipient
-  delivery work for a deliberate test message.
+- `VERIFIED_HARDWARE`: Android-to-Pi-to-iPhone MAP SMS sending works after the
+  narrow imsg service-sandbox correction. The preceding failed retest remains
+  historical regression evidence.
 - `UNKNOWN`: MAP delivery-state notifications, MMS, attachments, sent-folder
   reflection, and locked-iPhone behavior.
 - `UNKNOWN`: end-to-end automatic recovery after a physical reboot, Bluetooth
   loss, or network loss; static boot configuration is automated-test verified.
-- `UNKNOWN`: sustained-call quality with the latest bounded latency trimmer and
+- `VERIFIED_HARDWARE`: short-call subjective audio quality is good in both
+  directions with the latest tested build.
+- `UNKNOWN`: sustained-call stability with the latest bounded latency trimmer and
   hardware-backed Keystore status.
 
 ## Superseded findings
@@ -382,20 +595,14 @@ bearer token and can perform privacy-safe health and authenticated status checks
 
 ## Next milestone
 
-Milestone 5 answer, DTMF, and hangup controls are hardware-verified. The daemon is
-installed as a hardened persistent user service. Next, deploy the integrated audio
-build, validate human-perceived call audio, and reproduce the stuck-SCO condition
-before considering automatic recovery.
+Milestone 7 is the integrated Android companion product. The outbound-message
+regression is repaired with the minimum required writable paths. Next, harden
+send operation semantics and build the interactive conversation and call
+experiences, enable incoming data flows, and close recovery and release gaps. The
+authoritative phased plan and exit criteria are in `docs/product-roadmap.md`.
 
 ## End-to-end roadmap
 
-1. Backend state model and API skeleton.
-2. PBAP contact synchronization and caller matching.
-3. MAP incoming synchronization and notification/polling fallback.
-4. Hardware-verified outgoing MAP messages.
-5. Hardware-verified HFP call-control commands.
-6. Pi SCO audio bridge and transport benchmarks.
-7. Android API-27 control-plane application with secure enrollment, discovery,
-   pinned LAN TLS, messaging, and call controls.
-8. Android call audio (software path complete; hardware validation pending).
-9. Full integration, recovery, security, deployment, and maintenance.
+The original feasibility milestones 0–6 and most of the secure transport
+foundation are complete. Remaining work is organized by user-visible product
+outcomes rather than Bluetooth profile experiments; see `docs/product-roadmap.md`.
