@@ -480,7 +480,7 @@ public final class CallsActivity extends Activity {
         boolean live = !("idle".equals(callState) || "ended".equals(callState)
                 || "failed".equals(callState) || "error".equals(callState)
                 || "connection_lost".equals(callState));
-        if ((keyCode == KeyEvent.KEYCODE_CALL || keyCode == KeyEvent.KEYCODE_ENDCALL)
+        if ((keyCode == KeyEvent.KEYCODE_CALL || PhysicalCallKeyDispatcher.isEndKey(keyCode))
                 || live && relevant) return true;
         return super.dispatchKeyEvent(event);
     }
@@ -705,7 +705,7 @@ public final class CallsActivity extends Activity {
                 || "connection_lost".equals(callState)) {
             super.onBackPressed();
         } else {
-            status.setText("Use the visible call controls before leaving");
+            status.setText("Use the physical End key before leaving");
         }
     }
 

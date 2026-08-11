@@ -95,8 +95,11 @@ hardware observation or approved system change is required.
 - `VERIFIED_AUTOMATED`: the API-27 call screen is display-only during incoming,
   dialing, ringing, active, and ending states. A bounded physical-key dispatcher
   maps native Call/End keys and active-call digits to backend commands, suppresses
-  repeats, and passes 13 state/key regressions. The target keylayouts map scan
-  codes 231/61 to `CALL`, 107/62 to `ENDCALL`, 227 to `STAR`, and 523 to `POUND`.
+  repeats, and passes 16 state/key regressions. Raw target capture established
+  green=`KEY_SEND` and combined red End/Power=`KEY_POWER`. A permission-protected
+  Pi ADB monitor forwards raw short presses because this OEM reserves both keys;
+  held Power remains native. Hardware capture verified one forwarded short red
+  code and an unforwarded held press opening the normal power menu.
   A narrowly scoped key-filter accessibility service is installed and enabled;
   actual dedicated-key delivery still requires a physical press test.
 - `VERIFIED_HARDWARE`: the call-screen APK is installed on the Android device with

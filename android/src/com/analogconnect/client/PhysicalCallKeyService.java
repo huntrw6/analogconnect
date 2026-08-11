@@ -13,11 +13,15 @@ public final class PhysicalCallKeyService extends AccessibilityService {
     static final String ACTION_DEMO_KEY = "com.analogconnect.client.DEMO_PHYSICAL_CALL_KEY";
     static final String EXTRA_KEY_CODE = "key_code";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-
     @Override protected boolean onKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
         String cachedState = PhysicalCallKeyState.current();
-        boolean dedicated = keyCode == KeyEvent.KEYCODE_CALL || keyCode == KeyEvent.KEYCODE_ENDCALL;
+        boolean live = !("idle".equals(cachedState) || "ended".equals(cachedState)
+                || "failed".equals(cachedState) || "error".equals(cachedState)
+                || "connection_lost".equals(cachedState));
+        boolean dedicated = keyCode == KeyEvent.KEYCODE_CALL
+                || keyCode == KeyEvent.KEYCODE_ENDCALL
+                || live && keyCode == KeyEvent.KEYCODE_POWER;
         boolean dtmf = "active".equals(cachedState) && keyCode >= KeyEvent.KEYCODE_0
                 && keyCode <= KeyEvent.KEYCODE_POUND;
         if (!dedicated && !dtmf) return false;

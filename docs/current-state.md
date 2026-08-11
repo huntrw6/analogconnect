@@ -24,7 +24,10 @@ Status updated 2026-08-11 after the physical call-control safety checkpoint.
 - `VERIFIED_AUTOMATED`: once ringing or dialing begins, the call screen has no
   touch-activated call controls. The device's dedicated green Call key answers,
   the red End key rejects/cancels/ends according to authoritative call state,
-  and physical digits/`*`/`#` send DTMF only while active. Repeats, key-up, idle
+  and physical digits/`*`/`#` send DTMF only while active. The target red key is
+  combined End/Power; a permission-protected raw-key monitor on the connected Pi
+  distinguishes short End from held native Power. Hardware capture verified both
+  paths without a system keylayout modification. Repeats, key-up, idle
   End, and terminal states fail closed. A proximity wake lock protects the
   screen without being required for control. Real-key and proximity behavior
   remain pending hardware validation.

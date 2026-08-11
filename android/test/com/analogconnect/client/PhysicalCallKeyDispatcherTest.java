@@ -6,6 +6,8 @@ public final class PhysicalCallKeyDispatcherTest {
         expect("incoming", 6, PhysicalCallKeyDispatcher.Action.REJECT, "");
         expect("dialing", 6, PhysicalCallKeyDispatcher.Action.HANG_UP, "");
         expect("active", 6, PhysicalCallKeyDispatcher.Action.HANG_UP, "");
+        expect("incoming", 26, PhysicalCallKeyDispatcher.Action.REJECT, "");
+        expect("active", 26, PhysicalCallKeyDispatcher.Action.HANG_UP, "");
         expect("ending", 6, PhysicalCallKeyDispatcher.Action.NONE, "");
         expect("idle", 6, PhysicalCallKeyDispatcher.Action.NONE, "");
         expect("ended", 5, PhysicalCallKeyDispatcher.Action.NONE, "");
@@ -17,7 +19,8 @@ public final class PhysicalCallKeyDispatcherTest {
                 == PhysicalCallKeyDispatcher.Action.NONE, "repeat ignored");
         require(PhysicalCallKeyDispatcher.dispatch("incoming", 5, false, 0).action
                 == PhysicalCallKeyDispatcher.Action.NONE, "key up ignored");
-        System.out.println("ANDROID_PHYSICAL_CALL_KEY_TESTS=PASS tests=13");
+        expect("idle", 26, PhysicalCallKeyDispatcher.Action.NONE, "");
+        System.out.println("ANDROID_PHYSICAL_CALL_KEY_TESTS=PASS tests=16");
     }
 
     private static void expect(String state, int key, PhysicalCallKeyDispatcher.Action action,
