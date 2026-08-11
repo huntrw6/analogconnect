@@ -19,10 +19,10 @@ class CallKeyParserTest(unittest.TestCase):
         data = "[ 10.000] EV_KEY KEY_POWER DOWN\n[ 11.000] EV_KEY KEY_POWER UP\n"
         self.assertEqual([], call_keys.parse_events(data, 0.7))
 
-    def test_call_and_dtmf_only_on_down(self):
+    def test_only_reserved_call_key_is_forwarded(self):
         data = "[ 1.0] EV_KEY KEY_SEND DOWN\n[ 1.1] EV_KEY KEY_SEND UP\n" \
                "[ 2.0] EV_KEY KEY_5 DOWN\n[ 2.1] EV_KEY KEY_5 UP\n"
-        self.assertEqual([5, 12], call_keys.parse_events(data, 0.7))
+        self.assertEqual([5], call_keys.parse_events(data, 0.7))
 
 
 if __name__ == "__main__":

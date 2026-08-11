@@ -101,7 +101,11 @@ hardware observation or approved system change is required.
   held Power remains native. Hardware capture verified one forwarded short red
   code and an unforwarded held press opening the normal power menu.
   A narrowly scoped key-filter accessibility service is installed and enabled;
-  actual dedicated-key delivery still requires a physical press test.
+  the companion Pi raw-key service is enabled and persistent.
+- `VERIFIED_HARDWARE`: physical red rejected an incoming call and ended an active
+  call, green answered, touch lockout preserved the call, held Power opened the
+  native power menu, and human audio was clear both ways. Physical DTMF requires
+  one repeat after removing its duplicate Pi forwarding path.
 - `VERIFIED_HARDWARE`: the call-screen APK is installed on the Android device with
   app data preserved and a recoverable pre-deployment APK backup.
 - `VERIFIED_HARDWARE`: automatic PBAP contact refresh loaded 438 contacts and 471

@@ -26,7 +26,9 @@ The accessibility fallback requests no window content.
 
 For persistent operation, install the monitor as
 `~/.local/bin/analogconnect-android-call-keys` and enable the supplied user unit
-`config/systemd/analogconnect-android-keys.service`. It restarts across ADB/device
+`config/systemd/analogconnect-android-keys.service`. It forwards only the two
+Android-reserved Call/Power keys; ordinary DTMF stays Android-local to prevent a
+duplicate path. It restarts across ADB/device
 reconnects without requiring Android root or modifying the phone keylayout.
 
 `VERIFIED_HARDWARE`: raw green and red codes were captured; short red produced

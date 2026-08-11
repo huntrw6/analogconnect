@@ -340,6 +340,7 @@ public final class CallsActivity extends Activity {
 
     private void render(CallController.State state) {
         PhysicalCallKeyState.update(state.call);
+        applyCallChrome(isLiveCall(state.call));
         title.setText(state.title);
         boolean enabled = !commandPending && (settings.demoMode() || bridgeAvailable);
         dialTarget.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
@@ -387,6 +388,28 @@ public final class CallsActivity extends Activity {
             status.setText(settings.demoMode() ? "Offline demo · no real call actions"
                     : bridgeAvailable ? "iPhone calls connected" : "Calls unavailable · retrying");
         }
+    }
+
+    private static boolean isLiveCall(String state) {
+        return "incoming".equals(state) || "dialing".equals(state)
+                || "ringing".equals(state) || "active".equals(state)
+                || "ending".equals(state);
+    }
+
+    private void applyCallChrome(boolean live) {
+        getWindow().getDecorView().setSystemUiVisibility(live
+                ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                : View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) applyCallChrome(isLiveCall(callState));
     }
 
     private void confirmDial() {

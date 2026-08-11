@@ -29,8 +29,15 @@ Status updated 2026-08-11 after the physical call-control safety checkpoint.
   distinguishes short End from held native Power. Hardware capture verified both
   paths without a system keylayout modification. Repeats, key-up, idle
   End, and terminal states fail closed. A proximity wake lock protects the
-  screen without being required for control. Real-key and proximity behavior
-  remain pending hardware validation.
+  screen without being required for control. Proximity blanking remains pending
+  hardware validation.
+- `VERIFIED_HARDWARE`: on the target phone, a short red End/Power press rejected
+  a real incoming iPhone call and the same key ended a real active call; green
+  answered once, bidirectional audio was human-confirmed clear, screen touches
+  produced no call command, and held Power retained the native power menu. HFP
+  stayed `slc_ready` after teardown. Physical DTMF was captured but its first
+  real press had two possible software paths; the Pi path is now removed and a
+  single-path regression remains pending.
 - `VERIFIED_AUTOMATED`: an explicitly enabled offline demo source exercises
   direct, named group, unnamed group, unread, outgoing failure, ambiguity,
   multiple-sender, contact-search, and empty-search states. It is in-memory and

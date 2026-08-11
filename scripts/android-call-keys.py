@@ -10,9 +10,6 @@ ACTION = "com.analogconnect.client.PHYSICAL_CALL_KEY"
 COMPONENT = "com.analogconnect.client/.PhysicalCallKeyReceiver"
 KEYCODES = {
     "KEY_SEND": 5,
-    "KEY_0": 7, "KEY_1": 8, "KEY_2": 9, "KEY_3": 10, "KEY_4": 11,
-    "KEY_5": 12, "KEY_6": 13, "KEY_7": 14, "KEY_8": 15, "KEY_9": 16,
-    "KEY_STAR": 17, "KEY_NUMERIC_POUND": 18,
 }
 
 

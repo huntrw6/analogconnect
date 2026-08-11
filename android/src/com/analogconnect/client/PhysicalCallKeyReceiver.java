@@ -39,6 +39,7 @@ public final class PhysicalCallKeyReceiver extends BroadcastReceiver {
                     if (command != null) client.executeCallCommand(
                             settings.endpoint(), token, command, decision.value);
                     if (decision.action != PhysicalCallKeyDispatcher.Action.NONE) {
+                        Thread.sleep(800L);
                         showCallScreen(app);
                     }
                 } catch (Exception ignored) {
