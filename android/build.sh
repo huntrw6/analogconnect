@@ -44,6 +44,7 @@ javac -d "$test_classes_dir" \
     "$script_dir/src/com/analogconnect/client/MessageOperationId.java" \
     "$script_dir/src/com/analogconnect/client/MessageSendDraft.java" \
     "$script_dir/src/com/analogconnect/client/ConversationSummary.java" \
+    "$script_dir/src/com/analogconnect/client/MessageNotificationTracker.java" \
     "$script_dir/src/com/analogconnect/client/ConversationMessage.java" \
     "$script_dir/src/com/analogconnect/client/ConversationPageData.java" \
     "$script_dir/src/com/analogconnect/client/ConversationController.java" \
@@ -67,6 +68,7 @@ javac -d "$test_classes_dir" \
     "$script_dir/test/com/analogconnect/client/MessageOperationIdTest.java" \
     "$script_dir/test/com/analogconnect/client/MessageSendDraftTest.java" \
     "$script_dir/test/com/analogconnect/client/ConversationModelTest.java" \
+    "$script_dir/test/com/analogconnect/client/MessageNotificationTrackerTest.java" \
     "$script_dir/test/com/analogconnect/client/ConversationControllerTest.java" \
     "$script_dir/test/com/analogconnect/client/ConversationTimeTest.java" \
     "$script_dir/test/com/analogconnect/client/CallControllerTest.java" \
@@ -88,6 +90,7 @@ java -cp "$test_classes_dir" com.analogconnect.client.MediaSessionCredentialsTes
 java -cp "$test_classes_dir" com.analogconnect.client.MessageOperationIdTest
 java -cp "$test_classes_dir" com.analogconnect.client.MessageSendDraftTest
 java -cp "$test_classes_dir" com.analogconnect.client.ConversationModelTest
+java -cp "$test_classes_dir" com.analogconnect.client.MessageNotificationTrackerTest
 java -cp "$test_classes_dir" com.analogconnect.client.ConversationControllerTest
 java -cp "$test_classes_dir" com.analogconnect.client.ConversationTimeTest
 java -cp "$test_classes_dir" com.analogconnect.client.CallControllerTest

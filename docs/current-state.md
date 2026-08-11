@@ -60,6 +60,10 @@ Status updated 2026-08-11 after the physical call-control safety checkpoint.
 - `VERIFIED_AUTOMATED`: API-27 Messages and Incoming Calls notification channels
   exist. Synthetic group notification content and deep linking to the correct
   human-titled group thread passed ADB/UIAutomator inspection.
+- `VERIFIED_AUTOMATED`: the existing foreground connection service now polls
+  authenticated conversation summaries at a bounded interval, refreshes the
+  encrypted cache, suppresses historical/duplicate/sent notifications, and uses
+  stable per-thread notification IDs. Group previews retain sender attribution.
 - `VERIFIED_AUTOMATED`: explicit Light, Dark, and Follow device preferences apply
   to all user and developer Activities; light/dark message bubbles passed physical
   screenshot inspection.

@@ -37,7 +37,8 @@ public final class DeveloperToolsActivity extends Activity {
         }));
         section(content, "Messages");
         content.addView(Ui.text(this, "MAP        Production adapter configured\n"
-                + "ANCS       Waiting for production LE bearer\nGroup reply Disabled", 16));
+                + "ANCS       Production LE bearer enabled (hardware test pending)\n"
+                + "Group reply Disabled", 16));
         section(content, "Contacts");
         content.addView(Ui.text(this, "PBAP       Production adapter configured\n"
                 + "Cache      Encrypted last-known-good snapshot", 16));
@@ -48,9 +49,11 @@ public final class DeveloperToolsActivity extends Activity {
         for (String test : new String[] {"○ Production ANCS connection",
                 "○ Named group receive", "○ Unnamed group stability",
                 "○ Same-name groups", "○ Group rename", "○ Direct send",
-                "○ Direct receive", "○ Incoming call", "○ Outgoing call",
-                "○ Call audio", "○ ANCS Reply action"}) {
-            TextView row = Ui.text(this, test + "\n   Pending user/iPhone test", 16);
+                "○ Direct receive", "✓ Incoming call", "✓ Outgoing call",
+                "✓ Call audio", "○ ANCS Reply action"}) {
+            boolean complete = test.startsWith("✓");
+            TextView row = Ui.text(this, test + "\n   "
+                    + (complete ? "VERIFIED_HARDWARE" : "Pending user/iPhone test"), 16);
             row.setPadding(0, Ui.dp(this, 7), 0, Ui.dp(this, 7));
             content.addView(row);
         }

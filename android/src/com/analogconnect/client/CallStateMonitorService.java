@@ -18,6 +18,7 @@ public final class CallStateMonitorService extends Service {
     private static final int NOTIFICATION_ID = 9100;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean running = new AtomicBoolean();
+    private final MessageNotificationTracker messageTracker = new MessageNotificationTracker();
 
     static void start(Context context) {
         context.startForegroundService(new Intent(context, CallStateMonitorService.class));
@@ -41,6 +42,7 @@ public final class CallStateMonitorService extends Service {
     private void monitor() {
         String previous = "";
         long delay = 750L;
+        long nextMessagePoll = 0L;
         while (running.get()) {
             try {
                 EnrollmentSettings settings = new EnrollmentSettings(this);
@@ -57,6 +59,11 @@ public final class CallStateMonitorService extends Service {
                         AnalogNotifications.cancelIncomingCall(this);
                     }
                     previous = state;
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (now >= nextMessagePoll) {
+                        pollMessages(client, settings);
+                        nextMessagePoll = now + 5_000L;
+                    }
                 }
                 delay = 750L;
             } catch (Exception ignored) {
@@ -68,6 +75,17 @@ public final class CallStateMonitorService extends Service {
                 Thread.currentThread().interrupt();
                 return;
             }
+        }
+    }
+
+    private void pollMessages(ApiClient client, EnrollmentSettings settings) throws Exception {
+        ConversationPageData<ConversationSummary> page = client.conversations(
+                settings.endpoint(), new TokenVault(this).load());
+        new OfflineCache(this).storeConversations(page);
+        for (ConversationSummary item : messageTracker.update(page.items)) {
+            AnalogNotifications.showMessage(this,
+                    MessageNotificationTracker.notificationId(item.id), item.id,
+                    item.displayLabel(), item.previewLabel());
         }
     }
 
