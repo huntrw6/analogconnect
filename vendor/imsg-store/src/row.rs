@@ -90,6 +90,12 @@ pub struct ThreadRow {
     /// Outgoing delivery state of the most recent message in this thread; `None` when the
     /// latest message is received or was synced before Phase 4.
     pub latest_outgoing_status: Option<OutgoingStatus>,
+    /// Body of the latest visible message, for a familiar conversation-list preview.
+    pub latest_text: String,
+    /// Address associated with the latest visible message.
+    pub latest_sender: String,
+    /// Whether the latest visible message was sent by this device.
+    pub latest_sent: bool,
     /// Human-readable ANCS Subtitle for a verified group, when available.
     pub group_title: Option<String>,
     /// Whether this thread has verified ANCS group identity.

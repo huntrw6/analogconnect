@@ -14,6 +14,9 @@ final class ConversationSummary {
     final String title;
     final boolean canReply;
     final boolean identityConflict;
+    final String latestPreview;
+    final String latestSender;
+    final boolean latestSent;
 
     ConversationSummary(String id, String displayAddress, String displayName, boolean group,
             boolean replySupported, long latestUnixMillis,
@@ -27,6 +30,16 @@ final class ConversationSummary {
             boolean replySupported, long latestUnixMillis, long messageCount, long unreadCount,
             String latestOutgoingState, String kind, String title, boolean canReply,
             boolean identityConflict) {
+        this(id, displayAddress, displayName, group, replySupported, latestUnixMillis,
+                messageCount, unreadCount, latestOutgoingState, kind, title, canReply,
+                identityConflict, "", "", false);
+    }
+
+    ConversationSummary(String id, String displayAddress, String displayName, boolean group,
+            boolean replySupported, long latestUnixMillis, long messageCount, long unreadCount,
+            String latestOutgoingState, String kind, String title, boolean canReply,
+            boolean identityConflict, String latestPreview, String latestSender,
+            boolean latestSent) {
         if (!validConversationId(id) || displayAddress == null
                 || displayAddress.isEmpty() || displayAddress.length() > 128
                 || latestUnixMillis < 0 || messageCount < 0 || unreadCount < 0
@@ -37,6 +50,8 @@ final class ConversationSummary {
                         || "ambiguous".equals(kind))
                 || group != "group".equals(kind) && !identityConflict
                 || canReply != replySupported || (group && canReply) || (identityConflict && canReply)
+                || latestPreview == null || latestPreview.length() > 2000
+                || latestSender == null || latestSender.length() > 128
                 || !validOutgoingState(latestOutgoingState)) {
             throw new IllegalArgumentException("Conversation summary is invalid");
         }
@@ -53,6 +68,9 @@ final class ConversationSummary {
         this.title = title;
         this.canReply = canReply;
         this.identityConflict = identityConflict;
+        this.latestPreview = latestPreview;
+        this.latestSender = latestSender;
+        this.latestSent = latestSent;
     }
 
     String displayLabel() {
@@ -62,6 +80,13 @@ final class ConversationSummary {
     boolean canUsePrivateReply() {
         return canReply && replySupported && !group && !identityConflict
                 && "private".equals(kind);
+    }
+
+    String previewLabel() {
+        if (latestPreview.isEmpty()) return group ? "Group conversation" : "No messages yet";
+        if (latestSent) return "You: " + latestPreview;
+        if (group && !latestSender.isEmpty()) return latestSender + ": " + latestPreview;
+        return latestPreview;
     }
 
     static boolean validOutgoingState(String state) {

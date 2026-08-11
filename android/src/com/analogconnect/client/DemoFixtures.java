@@ -13,14 +13,17 @@ final class DemoFixtures {
         List<ConversationSummary> items = Arrays.asList(
                 direct("11111111111111111111111111111111", "Jordan Lee", now, 2, "sent_confirmed"),
                 new ConversationSummary(groupId('a'), "group", null, true, false,
-                        now - 3600000L, 8, 3, null, "group", "Weekend plans", false, false),
+                        now - 3600000L, 8, 3, null, "group", "Weekend plans", false, false,
+                        "That works for me.", "Riley", false),
                 new ConversationSummary(groupId('b'), "group", null, true, false,
-                        now - 86400000L, 4, 0, null, "group", "To you, Sam & Riley", false, false),
+                        now - 86400000L, 4, 0, null, "group", "To you, Sam & Riley", false, false,
+                        "See you tomorrow!", "Sam", false),
                 direct("22222222222222222222222222222222", "Casey Morgan",
                         now - 172800000L, 0, "failed_retryable"),
                 new ConversationSummary("33333333333333333333333333333333", "private", null,
                         false, false, now - 259200000L, 2, 1, null, "ambiguous",
-                        "Conversation needs attention", false, true));
+                        "Conversation needs attention", false, true, "Identity needs review",
+                        "", false));
         return new ConversationPageData<ConversationSummary>(items, null);
     }
 
@@ -63,7 +66,9 @@ final class DemoFixtures {
     private static ConversationSummary direct(String id, String title, long time, long unread,
             String state) {
         return new ConversationSummary(id, "5550199", title, false, true, time,
-                Math.max(2, unread), unread, state, "private", title, true, false);
+                Math.max(2, unread), unread, state, "private", title, true, false,
+                state != null && state.startsWith("failed") ? "Message wasn't sent"
+                        : "Sounds good — see you then!", "", state == null || !state.startsWith("failed"));
     }
 
     private static ConversationMessage message(String id, long time, String direction,

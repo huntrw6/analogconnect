@@ -191,6 +191,21 @@ impl Store {
                                    ('inbox', 'sent', 'telecom/msg/inbox', 'telecom/msg/sent') \
                              ORDER BY m2.timestamp_ms DESC, m2.rowid DESC LIMIT 1) \
                                 AS latest_outgoing_status, \
+                            (SELECT m2.text FROM messages m2 \
+                             WHERE m2.conversation_key = m.conversation_key \
+                               AND m2.folder IN \
+                                   ('inbox', 'sent', 'telecom/msg/inbox', 'telecom/msg/sent') \
+                             ORDER BY m2.timestamp_ms DESC, m2.rowid DESC LIMIT 1), \
+                            (SELECT m2.address FROM messages m2 \
+                             WHERE m2.conversation_key = m.conversation_key \
+                               AND m2.folder IN \
+                                   ('inbox', 'sent', 'telecom/msg/inbox', 'telecom/msg/sent') \
+                             ORDER BY m2.timestamp_ms DESC, m2.rowid DESC LIMIT 1), \
+                            (SELECT m2.direction FROM messages m2 \
+                             WHERE m2.conversation_key = m.conversation_key \
+                               AND m2.folder IN \
+                                   ('inbox', 'sent', 'telecom/msg/inbox', 'telecom/msg/sent') \
+                             ORDER BY m2.timestamp_ms DESC, m2.rowid DESC LIMIT 1), \
                             g.display_subtitle, \
                             CASE WHEN g.group_id IS NULL THEN 0 ELSE 1 END AS is_ancs_group, \
                             COALESCE(g.identity_conflict, 0) AS identity_conflict \
@@ -214,9 +229,12 @@ impl Store {
                         latest_outgoing_status: row
                             .get::<_, Option<String>>(7)?
                             .and_then(|s| s.parse::<OutgoingStatus>().ok()),
-                        group_title: row.get(8)?,
-                        is_ancs_group: row.get::<_, i64>(9)? != 0,
-                        identity_conflict: row.get::<_, i64>(10)? != 0,
+                        latest_text: row.get(8)?,
+                        latest_sender: row.get(9)?,
+                        latest_sent: row.get::<_, i64>(10)? == 1,
+                        group_title: row.get(11)?,
+                        is_ancs_group: row.get::<_, i64>(12)? != 0,
+                        identity_conflict: row.get::<_, i64>(13)? != 0,
                     })
                 })?;
                 rows.collect::<Result<Vec<_>, _>>()

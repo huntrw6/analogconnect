@@ -111,7 +111,7 @@ final class ApiClient {
             List<ConversationSummary> parsed = new ArrayList<ConversationSummary>(items.length());
             for (int index = 0; index < items.length(); index++) {
                 JSONObject item = items.getJSONObject(index);
-                if (item.length() != 13) {
+                if (item.length() != 16) {
                     throw new JSONException("unexpected conversation fields");
                 }
                 parsed.add(new ConversationSummary(
@@ -121,7 +121,9 @@ final class ApiClient {
                         item.getLong("latest_unix_millis"), item.getLong("message_count"),
                         item.getLong("unread_count"), optionalString(item, "latest_outgoing_state"),
                         item.getString("kind"), item.getString("title"),
-                        item.getBoolean("can_reply"), item.getBoolean("identity_conflict")));
+                        item.getBoolean("can_reply"), item.getBoolean("identity_conflict"),
+                        item.getString("latest_preview"), item.getString("latest_sender"),
+                        item.getBoolean("latest_sent")));
             }
             return new ConversationPageData<ConversationSummary>(
                     parsed, optionalString(response, "next_cursor"));

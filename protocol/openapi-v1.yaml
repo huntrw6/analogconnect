@@ -466,6 +466,9 @@ components:
         - message_count
         - unread_count
         - latest_outgoing_state
+        - latest_preview
+        - latest_sender
+        - latest_sent
         - kind
         - title
         - can_reply
@@ -505,6 +508,16 @@ components:
           oneOf:
             - $ref: "#/components/schemas/OutgoingMessageState"
             - type: "null"
+        latest_preview:
+          type: string
+          maxLength: 2000
+          description: Private latest-message preview; never log or place in a URL.
+        latest_sender:
+          type: string
+          maxLength: 128
+          description: Private sender routing label used for group preview attribution.
+        latest_sent:
+          type: boolean
         kind:
           type: string
           enum: [private, group, ambiguous]
