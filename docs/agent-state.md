@@ -92,10 +92,13 @@ hardware observation or approved system change is required.
   and Transport Extension entitlements. This Linux environment has none of that
   Apple build/signing toolchain, so Messages `threadIdentifier` and text-input
   Reply behavior remain untested.
-- `VERIFIED_AUTOMATED`: a dedicated API-27 call screen now reduces aggregate call
-  states into eligible controls, validates DTMF, polls without private logs,
-  auto-starts bounded call audio, shows duration/audio/route state, and passes the
-  signed APK build plus controller regression tests.
+- `VERIFIED_AUTOMATED`: the API-27 call screen is display-only during incoming,
+  dialing, ringing, active, and ending states. A bounded physical-key dispatcher
+  maps native Call/End keys and active-call digits to backend commands, suppresses
+  repeats, and passes 13 state/key regressions. The target keylayouts map scan
+  codes 231/61 to `CALL`, 107/62 to `ENDCALL`, 227 to `STAR`, and 523 to `POUND`.
+  A narrowly scoped key-filter accessibility service is installed and enabled;
+  actual dedicated-key delivery still requires a physical press test.
 - `VERIFIED_HARDWARE`: the call-screen APK is installed on the Android device with
   app data preserved and a recoverable pre-deployment APK backup.
 - `VERIFIED_HARDWARE`: automatic PBAP contact refresh loaded 438 contacts and 471
@@ -126,16 +129,16 @@ Tools, sanitized diagnostics, and build/install/validation scripts.
 
 ## Next autonomous actions
 
-1. Continue interaction and accessibility refinement with layout-level tests.
+1. Validate the physical Call/End keys and proximity behavior on a controlled call.
 2. Add a supervised production ANCS transport that can coexist with MAP and feed
    the tested correlation boundary; do not use the diagnostic script as transport.
 3. Add persisted call-recents data only after the backend has a truthful source.
 
 ## Next operator gate
 
-Operator testing is now required for the installed call screen: focus/layout,
-real incoming or outgoing state transitions, audio route, and teardown cannot be
-established in automation.
+Operator testing is required for actual Call/End delivery, proximity blanking,
+real incoming/outgoing transitions, audio, and teardown. Call screens expose no
+touch commands while live.
 
 ## Authoritative references
 

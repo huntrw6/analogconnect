@@ -5,13 +5,18 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.os.PowerManager;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
+import android.view.KeyEvent;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
@@ -42,6 +47,7 @@ public final class CallsActivity extends Activity {
     private TextView audioStatus;
     private TextView keypadLabel;
     private TextView callerName;
+    private TextView physicalInstructions;
     private Button back;
     private EditText dialTarget;
     private Button dial;
@@ -62,6 +68,15 @@ public final class CallsActivity extends Activity {
     private boolean permissionRequested;
     private boolean permissionDenied;
     private boolean bridgeAvailable;
+    private PowerManager.WakeLock proximityLock;
+    private boolean keyReceiverRegistered;
+    private final BroadcastReceiver demoKeyReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, android.content.Intent intent) {
+            if (!settings.demoMode()) return;
+            int keyCode = intent.getIntExtra(PhysicalCallKeyService.EXTRA_KEY_CODE, -1);
+            handlePhysicalDecision(PhysicalCallKeyDispatcher.dispatch(callState, keyCode, true, 0));
+        }
+    };
     private long audioRetryAfterElapsed;
 
     private final Runnable poll = new Runnable() {
@@ -140,6 +155,13 @@ public final class CallsActivity extends Activity {
         super.onCreate(state);
         settings = new EnrollmentSettings(this);
         vault = new TokenVault(this);
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        if (power != null && power.isWakeLockLevelSupported(
+                PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
+            proximityLock = power.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK,
+                    "AnalogConnect:call-proximity");
+            proximityLock.setReferenceCounted(false);
+        }
         if (state != null) {
             callState = state.getString("call_state", callState);
         } else if (settings.demoMode()) {
@@ -189,6 +211,12 @@ public final class CallsActivity extends Activity {
         status.setPadding(0, dp(4), 0, dp(8));
         status.setContentDescription("Call connection status");
         content.addView(status);
+
+        physicalInstructions = text("", 17);
+        physicalInstructions.setGravity(Gravity.CENTER_HORIZONTAL);
+        physicalInstructions.setPadding(dp(8), dp(8), dp(8), dp(12));
+        physicalInstructions.setContentDescription("Physical call button instructions");
+        content.addView(physicalInstructions);
 
         dialTarget = new EditText(this);
         dialTarget.setId(R.id.dial_target);
@@ -311,6 +339,7 @@ public final class CallsActivity extends Activity {
     }
 
     private void render(CallController.State state) {
+        PhysicalCallKeyState.update(state.call);
         title.setText(state.title);
         boolean enabled = !commandPending && (settings.demoMode() || bridgeAvailable);
         dialTarget.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
@@ -318,15 +347,21 @@ public final class CallsActivity extends Activity {
         keypadLabel.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
         dial.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
         dial.setEnabled(enabled && state.canDial);
-        answer.setVisibility(state.canAnswer ? View.VISIBLE : View.GONE);
-        answer.setEnabled(enabled && state.canAnswer);
-        reject.setVisibility(state.canReject ? View.VISIBLE : View.GONE);
-        reject.setEnabled(enabled && state.canReject);
-        hangUp.setVisibility(state.canHangUp ? View.VISIBLE : View.GONE);
-        hangUp.setEnabled(enabled && state.canHangUp);
-        keypad.setVisibility(state.canSendDtmf ? View.VISIBLE : View.GONE);
-        speakerphone.setVisibility(state.needsAudio ? View.VISIBLE : View.GONE);
+        answer.setVisibility(View.GONE);
+        answer.setClickable(false);
+        reject.setVisibility(View.GONE);
+        reject.setClickable(false);
+        hangUp.setVisibility(View.GONE);
+        hangUp.setClickable(false);
+        keypad.setVisibility(View.GONE);
+        speakerphone.setVisibility(View.GONE);
+        speakerphone.setClickable(false);
         navigation.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
+        physicalInstructions.setText(instructions(state.call));
+        physicalInstructions.setVisibility(state.canDial ? View.GONE : View.VISIBLE);
+        audioStatus.setVisibility(state.needsAudio ? View.VISIBLE : View.GONE);
+        updateProximity(!state.canDial && !"ended".equals(state.call)
+                && !"failed".equals(state.call) && !"error".equals(state.call));
         if (state.needsAudio) {
             if (activeSinceElapsed == 0L) {
                 activeSinceElapsed = SystemClock.elapsedRealtime();
@@ -430,6 +465,69 @@ public final class CallsActivity extends Activity {
                 });
             }
         });
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        boolean relevant = PhysicalCallKeyDispatcher.isCallKey(keyCode);
+        PhysicalCallKeyDispatcher.Decision decision = PhysicalCallKeyDispatcher.dispatch(
+                callState, keyCode, event.getAction() == KeyEvent.ACTION_DOWN,
+                event.getRepeatCount());
+        if (decision.action != PhysicalCallKeyDispatcher.Action.NONE) {
+            handlePhysicalDecision(decision);
+            return true;
+        }
+        boolean live = !("idle".equals(callState) || "ended".equals(callState)
+                || "failed".equals(callState) || "error".equals(callState)
+                || "connection_lost".equals(callState));
+        if ((keyCode == KeyEvent.KEYCODE_CALL || keyCode == KeyEvent.KEYCODE_ENDCALL)
+                || live && relevant) return true;
+        return super.dispatchKeyEvent(event);
+    }
+
+    private void handlePhysicalDecision(PhysicalCallKeyDispatcher.Decision decision) {
+        if (decision.action == PhysicalCallKeyDispatcher.Action.OPEN_DIALER) {
+            dialTarget.requestFocus();
+            return;
+        }
+        if (decision.action == PhysicalCallKeyDispatcher.Action.ANSWER) {
+            execute("answer", "");
+            return;
+        }
+        if (decision.action == PhysicalCallKeyDispatcher.Action.REJECT) {
+            execute("reject", "");
+            return;
+        }
+        if (decision.action == PhysicalCallKeyDispatcher.Action.HANG_UP) {
+            execute("hang_up", "");
+            return;
+        }
+        if (decision.action == PhysicalCallKeyDispatcher.Action.DTMF) {
+            execute("send_dtmf", decision.value);
+            status.setText("Tone " + decision.value + " sent");
+            return;
+        }
+    }
+
+    private static String instructions(String state) {
+        if ("incoming".equals(state)) {
+            return "Press the green Call key to answer\nPress the red End key to decline";
+        }
+        if ("active".equals(state)) {
+            return "Press the red End key to end the call\n"
+                    + "Use the physical number keys for touch tones";
+        }
+        if ("dialing".equals(state) || "ringing".equals(state)) {
+            return "Press the red End key to cancel the call";
+        }
+        if ("ending".equals(state)) return "Ending call…";
+        return "";
+    }
+
+    private void updateProximity(boolean live) {
+        if (proximityLock == null) return;
+        if (live && !proximityLock.isHeld()) proximityLock.acquire();
+        if (!live && proximityLock.isHeld()) proximityLock.release();
     }
 
     private ApiClient apiClient() throws Exception {
@@ -574,6 +672,8 @@ public final class CallsActivity extends Activity {
 
     @Override protected void onStart() {
         super.onStart();
+        registerReceiver(demoKeyReceiver, new IntentFilter(PhysicalCallKeyService.ACTION_DEMO_KEY));
+        keyReceiverRegistered = true;
         polling = true;
         mainHandler.removeCallbacks(poll);
         mainHandler.post(poll);
@@ -582,6 +682,10 @@ public final class CallsActivity extends Activity {
     @Override protected void onStop() {
         polling = false;
         mainHandler.removeCallbacks(poll);
+        if (keyReceiverRegistered) {
+            unregisterReceiver(demoKeyReceiver);
+            keyReceiverRegistered = false;
+        }
         super.onStop();
     }
 
@@ -591,6 +695,7 @@ public final class CallsActivity extends Activity {
         stopAudio();
         networkExecutor.shutdownNow();
         audioExecutor.shutdown();
+        updateProximity(false);
         super.onDestroy();
     }
 

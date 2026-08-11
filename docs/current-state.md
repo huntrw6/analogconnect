@@ -6,7 +6,7 @@ interpretations are superseded.
 
 ## Current implementation
 
-Status updated 2026-08-10 after the product UI and offline-fixture checkpoint.
+Status updated 2026-08-11 after the physical call-control safety checkpoint.
 
 ## Android product UI checkpoint
 
@@ -21,10 +21,13 @@ Status updated 2026-08-10 after the product UI and offline-fixture checkpoint.
 - `VERIFIED_AUTOMATED`: direct conversations and the dedicated new-message flow
   can send through the real authenticated API. Group and ambiguous composers
   fail closed with user-facing explanations.
-- `VERIFIED_AUTOMATED`: the calls screen provides a familiar 12-key dial pad,
-  incoming answer/decline, dialing/active/ending/recovery states, automatic call
-  audio, speaker routing, hangup, and an active-call DTMF keypad. Navigation is
-  hidden during non-idle calls to avoid disguising active call state.
+- `VERIFIED_AUTOMATED`: once ringing or dialing begins, the call screen has no
+  touch-activated call controls. The device's dedicated green Call key answers,
+  the red End key rejects/cancels/ends according to authoritative call state,
+  and physical digits/`*`/`#` send DTMF only while active. Repeats, key-up, idle
+  End, and terminal states fail closed. A proximity wake lock protects the
+  screen without being required for control. Real-key and proximity behavior
+  remain pending hardware validation.
 - `VERIFIED_AUTOMATED`: an explicitly enabled offline demo source exercises
   direct, named group, unnamed group, unread, outgoing failure, ambiguity,
   multiple-sender, contact-search, and empty-search states. It is in-memory and
