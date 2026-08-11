@@ -29,9 +29,24 @@ Status updated 2026-08-10 after the product UI and offline-fixture checkpoint.
   direct, named group, unnamed group, unread, outgoing failure, ambiguity,
   multiple-sender, contact-search, and empty-search states. It is in-memory and
   cannot write to the encrypted production store.
-- `UNKNOWN`: visual validation on the physical API-27 phone and emulator remains
-  pending. The current environment has build tooling but no configured runnable
-  emulator.
+- `BLOCKED`: an emulator remains unavailable; this aarch64 Pi has no installed
+  emulator binary or AVD. Physical API-27 testing is used instead.
+- `VERIFIED_AUTOMATED`: the signed APK was upgraded on the physical API-27 phone
+  without clearing data. Offline demo walkthroughs validated onboarding, fixed
+  navigation, direct/group threads, a fixed composer, group fail-closed wording,
+  dark appearance, 1.5× font scaling, dialer recovery, notification channels,
+  group notification content, and notification deep linking. These are physical
+  layout checks with synthetic data, not iPhone hardware evidence.
+- `VERIFIED_AUTOMATED`: conversation summaries now include bounded latest-message
+  previews and group sender attribution. Android retains last-known-good
+  conversations, messages, and contacts in an AES-GCM Android Keystore cache and
+  labels cached views as offline; send routing never consults the cache.
+- `VERIFIED_AUTOMATED`: API-27 Messages and Incoming Calls notification channels
+  exist. Synthetic group notification content and deep linking to the correct
+  human-titled group thread passed ADB/UIAutomator inspection.
+- `VERIFIED_AUTOMATED`: explicit Light, Dark, and Follow device preferences apply
+  to all user and developer Activities; light/dark message bubbles passed physical
+  screenshot inspection.
 
 - Milestone 0A baseline and Milestone 1 backend skeleton are complete.
 - Milestone 2 contact parsing is validated against the real iPhone using an

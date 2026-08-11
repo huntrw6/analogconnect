@@ -11,7 +11,9 @@ import android.widget.TextView;
 
 public final class HomeActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
+        Ui.applyTheme(this);
         super.onCreate(state);
+        AnalogNotifications.createChannels(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(Ui.dp(this, 20), Ui.dp(this, 24), Ui.dp(this, 20), 0);
@@ -20,7 +22,7 @@ public final class HomeActivity extends Activity {
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         root.addView(title);
         TextView status = Ui.text(this, "Your iPhone conversations, calls, and contacts", 16);
-        status.setTextColor(Ui.MUTED);
+        status.setTextColor(Ui.mutedColor(this));
         status.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 24));
         root.addView(status);
 

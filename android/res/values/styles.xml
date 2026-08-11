@@ -9,4 +9,11 @@
         <item name="android:navigationBarColor">#102A43</item>
         <item name="android:statusBarColor">#102A43</item>
     </style>
+    <style name="AppThemeDark" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#7DB7E8</item>
+        <item name="android:navigationBarColor">#081726</item>
+        <item name="android:statusBarColor">#081726</item>
+        <item name="android:colorControlHighlight">#337DB7E8</item>
+    </style>
 </resources>

@@ -17,19 +17,19 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".HomeActivity"
+            android:name=".WelcomeActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".ConversationsActivity" android:exported="false" />
+        <activity android:name=".HomeActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".DeveloperToolsActivity" android:exported="false" />
         <activity android:name=".ComposeActivity" android:exported="false" />
-        <activity
-            android:name=".ConversationsActivity"
-            android:exported="false" />
         <activity
             android:name=".CallsActivity"
             android:exported="false" />

@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 public final class CallsActivity extends Activity {
     static final String EXTRA_DIAL_TARGET = "com.analogconnect.client.DIAL_TARGET";
     static final String EXTRA_DEMO_CALL_STATE = "com.analogconnect.client.DEMO_CALL_STATE";
+    static final String EXTRA_DISPLAY_NAME = "com.analogconnect.client.DISPLAY_NAME";
     private static final int RECORD_AUDIO_PERMISSION_REQUEST = 51;
     private static final long POLL_INTERVAL_MS = 500L;
 
@@ -39,6 +40,9 @@ public final class CallsActivity extends Activity {
     private TextView duration;
     private TextView status;
     private TextView audioStatus;
+    private TextView keypadLabel;
+    private TextView callerName;
+    private Button back;
     private EditText dialTarget;
     private Button dial;
     private Button answer;
@@ -57,6 +61,7 @@ public final class CallsActivity extends Activity {
     private boolean audioStarting;
     private boolean permissionRequested;
     private boolean permissionDenied;
+    private boolean bridgeAvailable;
     private long audioRetryAfterElapsed;
 
     private final Runnable poll = new Runnable() {
@@ -81,7 +86,10 @@ public final class CallsActivity extends Activity {
                             }
                             if (result == null) {
                                 status.setText("Bridge unavailable · retrying");
+                                bridgeAvailable = false;
+                                render(CallController.reduce(callState));
                             } else {
+                                bridgeAvailable = true;
                                 callState = result;
                                 render(CallController.reduce(result));
                             }
@@ -128,34 +136,49 @@ public final class CallsActivity extends Activity {
     };
 
     @Override protected void onCreate(Bundle state) {
+        Ui.applyTheme(this);
         super.onCreate(state);
         settings = new EnrollmentSettings(this);
         vault = new TokenVault(this);
-        if (settings.demoMode()) {
+        if (state != null) {
+            callState = state.getString("call_state", callState);
+        } else if (settings.demoMode()) {
             String demoState = getIntent().getStringExtra(EXTRA_DEMO_CALL_STATE);
             if (demoState != null) callState = demoState;
         }
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        int padding = dp(20);
+        content.setFocusableInTouchMode(true);
+        int padding = dp(12);
         content.setPadding(padding, padding, padding, padding);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(content);
-        setContentView(scroll);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        Button back = new Button(this);
+        back = new Button(this);
         back.setText("Back");
         back.setContentDescription("Back to AnalogConnect home");
         back.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) { finish(); }
         });
-        content.addView(back);
+        back.setVisibility(View.GONE);
 
         title = text("Calls", 30);
         title.setGravity(Gravity.CENTER_HORIZONTAL);
-        title.setPadding(0, dp(24), 0, dp(8));
+        title.setPadding(0, dp(8), 0, dp(4));
         content.addView(title);
+
+        String displayName = getIntent().getStringExtra(EXTRA_DISPLAY_NAME);
+        callerName = text(displayName == null ? "" : displayName, 22);
+        callerName.setGravity(Gravity.CENTER_HORIZONTAL);
+        callerName.setTypeface(null, android.graphics.Typeface.BOLD);
+        callerName.setPadding(0, 0, 0, dp(8));
+        callerName.setVisibility(displayName == null || displayName.isEmpty()
+                ? View.GONE : View.VISIBLE);
+        content.addView(callerName);
 
         duration = text("", 22);
         duration.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -163,11 +186,12 @@ public final class CallsActivity extends Activity {
 
         status = text("Connecting to bridge…", 16);
         status.setGravity(Gravity.CENTER_HORIZONTAL);
-        status.setPadding(0, dp(8), 0, dp(20));
+        status.setPadding(0, dp(4), 0, dp(8));
         status.setContentDescription("Call connection status");
         content.addView(status);
 
         dialTarget = new EditText(this);
+        dialTarget.setId(R.id.dial_target);
         dialTarget.setHint("Phone number");
         dialTarget.setSingleLine(true);
         dialTarget.setInputType(InputType.TYPE_CLASS_PHONE);
@@ -178,9 +202,9 @@ public final class CallsActivity extends Activity {
         }
         content.addView(dialTarget);
 
-        TextView keypadLabel = text("Keypad", 18);
+        keypadLabel = text("Keypad", 18);
         keypadLabel.setGravity(Gravity.CENTER_HORIZONTAL);
-        keypadLabel.setPadding(0, dp(12), 0, dp(4));
+        keypadLabel.setPadding(0, dp(4), 0, dp(2));
         content.addView(keypadLabel);
         dialPad = new LinearLayout(this);
         dialPad.setOrientation(LinearLayout.VERTICAL);
@@ -197,7 +221,7 @@ public final class CallsActivity extends Activity {
                     }
                 });
                 key.setContentDescription("Dial " + label.substring(0, 1));
-                keys.addView(key, new LinearLayout.LayoutParams(0, dp(64), 1f));
+                keys.addView(key, new LinearLayout.LayoutParams(0, dp(44), 1f));
             }
             dialPad.addView(keys);
         }
@@ -219,11 +243,15 @@ public final class CallsActivity extends Activity {
         answer = button("Answer", new View.OnClickListener() {
             @Override public void onClick(View view) { execute("answer", ""); }
         });
+        answer.setTextColor(android.graphics.Color.WHITE);
+        answer.setBackgroundColor(Ui.GREEN);
         content.addView(answer);
 
         reject = button("Reject", new View.OnClickListener() {
             @Override public void onClick(View view) { execute("reject", ""); }
         });
+        reject.setTextColor(android.graphics.Color.WHITE);
+        reject.setBackgroundColor(Ui.RED);
         content.addView(reject);
 
         hangUp = button("End call", new View.OnClickListener() {
@@ -262,8 +290,10 @@ public final class CallsActivity extends Activity {
         }
         content.addView(keypad);
         navigation = Ui.bottomNavigation(this, "Calls");
-        content.addView(navigation);
+        root.addView(navigation);
+        setContentView(root);
         render(CallController.reduce("idle"));
+        content.requestFocus();
     }
 
     private TextView text(String value, int size) {
@@ -282,9 +312,10 @@ public final class CallsActivity extends Activity {
 
     private void render(CallController.State state) {
         title.setText(state.title);
-        boolean enabled = !commandPending;
+        boolean enabled = !commandPending && (settings.demoMode() || bridgeAvailable);
         dialTarget.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
         dialPad.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
+        keypadLabel.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
         dial.setVisibility(state.canDial ? View.VISIBLE : View.GONE);
         dial.setEnabled(enabled && state.canDial);
         answer.setVisibility(state.canAnswer ? View.VISIBLE : View.GONE);
@@ -303,6 +334,7 @@ public final class CallsActivity extends Activity {
             long elapsed = Math.max(0L, SystemClock.elapsedRealtime() - activeSinceElapsed);
             duration.setText(String.format("%02d:%02d", elapsed / 60000L,
                     (elapsed / 1000L) % 60L));
+            duration.setVisibility(View.VISIBLE);
             if (settings.demoMode()) {
                 audioStatus.setText("Offline demo · call audio is simulated");
             } else {
@@ -311,12 +343,14 @@ public final class CallsActivity extends Activity {
         } else {
             activeSinceElapsed = 0L;
             duration.setText("");
+            duration.setVisibility(View.GONE);
             if (audioSession != null) {
                 stopAudio();
             }
         }
         if (!commandPending) {
-            status.setText("Bridge connected");
+            status.setText(settings.demoMode() ? "Offline demo · no real call actions"
+                    : bridgeAvailable ? "iPhone calls connected" : "Calls unavailable · retrying");
         }
     }
 
@@ -558,6 +592,21 @@ public final class CallsActivity extends Activity {
         networkExecutor.shutdownNow();
         audioExecutor.shutdown();
         super.onDestroy();
+    }
+
+    @Override public void onBackPressed() {
+        if ("idle".equals(callState) || "ended".equals(callState)
+                || "error".equals(callState) || "failed".equals(callState)
+                || "connection_lost".equals(callState)) {
+            super.onBackPressed();
+        } else {
+            status.setText("Use the visible call controls before leaving");
+        }
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putString("call_state", callState);
     }
 
     private int dp(int value) {

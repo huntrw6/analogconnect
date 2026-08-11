@@ -118,6 +118,12 @@ contacts/settings, preserved Developer Tools, and isolated in-memory fixtures.
 The API-27 unit suite and signed APK build pass. Live transport into the ANCS
 boundary is explicitly not integrated and group reply remains closed.
 
+Subsequent unattended product hardening added physical-device layout correction,
+message previews, fixed navigation/composer behavior, onboarding, explicit dark
+appearance, encrypted read-only offline cache, API-27 message/call notifications,
+notification deep links, connection-safe call controls, structured Developer
+Tools, sanitized diagnostics, and build/install/validation scripts.
+
 ## Next autonomous actions
 
 1. Continue interaction and accessibility refinement with layout-level tests.

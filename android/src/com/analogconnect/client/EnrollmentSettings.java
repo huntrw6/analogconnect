@@ -10,6 +10,8 @@ final class EnrollmentSettings {
     private static final String TLS_NAME = "tls_name";
     private static final String DEFAULT_ENDPOINT = "http://127.0.0.1:8787";
     private static final String DEMO_MODE = "demo_mode";
+    private static final String APPEARANCE = "appearance";
+    private static final String ONBOARDING_COMPLETE = "onboarding_complete";
 
     private final SharedPreferences preferences;
 
@@ -41,6 +43,23 @@ final class EnrollmentSettings {
 
     void setDemoMode(boolean enabled) {
         preferences.edit().putBoolean(DEMO_MODE, enabled).apply();
+    }
+
+    String appearance() { return preferences.getString(APPEARANCE, "device"); }
+
+    void setAppearance(String value) {
+        if (!"light".equals(value) && !"dark".equals(value) && !"device".equals(value)) {
+            throw new IllegalArgumentException("Unknown appearance");
+        }
+        preferences.edit().putString(APPEARANCE, value).apply();
+    }
+
+    boolean onboardingComplete() {
+        return preferences.getBoolean(ONBOARDING_COMPLETE, false);
+    }
+
+    void completeOnboarding() {
+        preferences.edit().putBoolean(ONBOARDING_COMPLETE, true).apply();
     }
 
     void save(String endpoint, String certificatePin, String tlsName) {

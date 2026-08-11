@@ -28,11 +28,15 @@ public final class ContactsActivity extends Activity implements ContactControlle
     private String requestedCursor;
     private String nextCursor;
     private boolean loading;
+    private OfflineCache offlineCache;
+    private volatile boolean showingCachedData;
 
     @Override protected void onCreate(Bundle state) {
+        Ui.applyTheme(this);
         super.onCreate(state);
         settings = new EnrollmentSettings(this);
         vault = new TokenVault(this);
+        offlineCache = new OfflineCache(this);
 
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -40,15 +44,32 @@ public final class ContactsActivity extends Activity implements ContactControlle
         content.setPadding(padding, padding, padding, padding);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(content);
-        setContentView(scroll);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        root.addView(Ui.bottomNavigation(this, "Contacts"));
+        setContentView(root);
 
         controller = new ContactController.Runner(new ContactController.Gateway() {
             @Override public ConversationPageData<ContactListItem> contacts(
                     String query, String cursor)
                     throws Exception {
                 if (settings.demoMode()) return DemoFixtures.contacts(query);
-                ApiClient client = new ApiClient(settings.certificatePin(), settings.tlsName());
-                return client.contacts(settings.endpoint(), vault.load(), query, cursor);
+                try {
+                    ApiClient client = new ApiClient(settings.certificatePin(), settings.tlsName());
+                    ConversationPageData<ContactListItem> page = client.contacts(
+                            settings.endpoint(), vault.load(), query, cursor);
+                    if (cursor == null && (query == null || query.trim().isEmpty())) {
+                        offlineCache.storeContacts(page);
+                    }
+                    showingCachedData = false;
+                    return page;
+                } catch (Exception error) {
+                    ConversationPageData<ContactListItem> cached = offlineCache.loadContacts(query);
+                    if (cached == null) throw error;
+                    showingCachedData = true;
+                    return cached;
+                }
             }
         }, this);
         showSearchChrome();
@@ -107,6 +128,7 @@ public final class ContactsActivity extends Activity implements ContactControlle
             @Override public void run() {
                 loading = false;
                 showSearchChrome();
+                if (showingCachedData) status("iPhone disconnected · showing saved contacts");
                 if (requestedCursor == null) {
                     visibleContacts.clear();
                 }
@@ -135,6 +157,8 @@ public final class ContactsActivity extends Activity implements ContactControlle
                                 Intent call = new Intent(ContactsActivity.this,
                                         CallsActivity.class);
                                 call.putExtra(CallsActivity.EXTRA_DIAL_TARGET, number);
+                                if (contact.displayName != null) call.putExtra(
+                                        CallsActivity.EXTRA_DISPLAY_NAME, contact.displayName);
                                 startActivity(call);
                             }
                         });
@@ -166,7 +190,6 @@ public final class ContactsActivity extends Activity implements ContactControlle
                     });
                     content.addView(more);
                 }
-                content.addView(Ui.bottomNavigation(ContactsActivity.this, "Contacts"));
             }
         });
     }

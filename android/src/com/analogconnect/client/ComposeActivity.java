@@ -23,6 +23,7 @@ public final class ComposeActivity extends Activity {
     private Button send;
 
     @Override protected void onCreate(Bundle state) {
+        Ui.applyTheme(this);
         super.onCreate(state);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -34,6 +35,7 @@ public final class ComposeActivity extends Activity {
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         content.addView(title);
         recipient = new EditText(this);
+        recipient.setId(R.id.compose_recipient);
         recipient.setHint("To: name or phone number");
         recipient.setInputType(InputType.TYPE_CLASS_PHONE);
         recipient.setSingleLine(true);
@@ -44,9 +46,10 @@ public final class ComposeActivity extends Activity {
         }
         content.addView(recipient);
         TextView note = Ui.text(this, "New messages are private and sent to one recipient.", 14);
-        note.setTextColor(Ui.MUTED);
+        note.setTextColor(Ui.mutedColor(this));
         content.addView(note);
         body = new EditText(this);
+        body.setId(R.id.compose_body);
         body.setHint("Text message");
         body.setMinLines(3);
         body.setMaxLines(8);

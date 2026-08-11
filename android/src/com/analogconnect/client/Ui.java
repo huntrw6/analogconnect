@@ -8,6 +8,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.app.Activity;
+import android.content.res.Configuration;
 
 final class Ui {
     static final int NAVY = Color.rgb(24, 52, 77);
@@ -26,8 +28,26 @@ final class Ui {
         TextView view = new TextView(context);
         view.setText(value);
         view.setTextSize(size);
-        view.setTextColor(NAVY);
         return view;
+    }
+
+    static int mutedColor(Context context) {
+        return isDark(context) ? Color.rgb(184, 193, 201) : MUTED;
+    }
+
+    static void applyTheme(Activity activity) {
+        String appearance = new EnrollmentSettings(activity).appearance();
+        boolean dark = "dark".equals(appearance) || "device".equals(appearance)
+                && (activity.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        activity.setTheme(dark ? R.style.AppThemeDark : R.style.AppTheme);
+    }
+
+    static boolean isDark(Context context) {
+        String appearance = new EnrollmentSettings(context).appearance();
+        return "dark".equals(appearance) || "device".equals(appearance)
+                && (context.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
     }
 
     static Button button(Context context, String label, View.OnClickListener listener) {
@@ -78,8 +98,11 @@ final class Ui {
                 context.startActivity(new android.content.Intent(context, target));
             }
         });
+        button.setTextSize(11);
+        button.setMinWidth(0);
+        button.setPadding(0, 0, 0, 0);
         button.setEnabled(!label.equals(selected));
         button.setContentDescription(label + (label.equals(selected) ? ", selected" : ""));
-        row.addView(button, new LinearLayout.LayoutParams(0, dp(context, 52), 1f));
+        row.addView(button, new LinearLayout.LayoutParams(0, dp(context, 56), 1f));
     }
 }

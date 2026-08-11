@@ -14,4 +14,8 @@
     <item name="phone_integration" type="id" />
     <item name="phone_account_settings" type="id" />
     <item name="result" type="id" />
+    <item name="compose_recipient" type="id" />
+    <item name="compose_body" type="id" />
+    <item name="conversation_search" type="id" />
+    <item name="dial_target" type="id" />
 </resources>

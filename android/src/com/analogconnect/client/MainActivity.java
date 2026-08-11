@@ -94,6 +94,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle state) {
+        Ui.applyTheme(this);
         super.onCreate(state);
         vault = new TokenVault(this);
         discovery = new NsdDiscovery(this);
