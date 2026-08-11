@@ -98,17 +98,24 @@ pub async fn run(
         let _ = state.send(BluezAncsState::Discovering);
         match session(&mut supervisor, &output, &state, &mut shutdown).await {
             Ok(()) if *shutdown.borrow() => return,
-            Ok(()) | Err(_) => {
-                let SupervisorCommand::RetryAfterSeconds(seconds) = supervisor.disconnected()
-                else {
-                    return;
-                };
-                let _ = state.send(BluezAncsState::BackingOff);
-                tokio::select! {
-                    () = tokio::time::sleep(Duration::from_secs(seconds)) => {}
-                    changed = shutdown.changed() => {
-                        if changed.is_err() || *shutdown.borrow() { return; }
-                    }
+            Ok(()) => {}
+            Err(error) => {
+                tracing::warn!(
+                    event = "ancs_bearer_retry",
+                    reason = %error,
+                    "ANCS bearer unavailable; Classic Bluetooth remains untouched"
+                );
+            }
+        }
+        {
+            let SupervisorCommand::RetryAfterSeconds(seconds) = supervisor.disconnected() else {
+                return;
+            };
+            let _ = state.send(BluezAncsState::BackingOff);
+            tokio::select! {
+                () = tokio::time::sleep(Duration::from_secs(seconds)) => {}
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() { return; }
                 }
             }
         }

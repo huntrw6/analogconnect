@@ -51,39 +51,12 @@ Report only whether names/search/pagination/matching look correct, whether unkno
 numbers fall back sensibly, and any fixed error text. Do not report names or phone
 numbers.
 
-## Dedicated Android call screen walkthrough — ready
+## Call controls and audio — complete
 
-Evidence needed: physical layout/focus and real call/audio behavior that cannot be
-observed by repository automation.
-
-Setup:
-
-1. Keep the iPhone and Pi nearby with Bluetooth and Wi-Fi in their normal working
-   state.
-2. Open AnalogConnect on the Android and choose **Open calls**.
-3. Do not share or photograph phone numbers, contact names, or call logs.
-
-Actions and expected aggregate observations:
-
-1. With no call, confirm the screen says **Ready to call**, shows the number field,
-   and D-pad/keyboard focus can reach **Review and call**.
-2. Place one ordinary test call. Confirm **Calling…** appears, then **Call in
-   progress**, elapsed time advances, and audio connects automatically after the
-   microphone prompt if it appears.
-3. Confirm speech is intelligible both ways through the earpiece, toggle
-   **Speakerphone** once, send one harmless DTMF digit only if the destination can
-   safely receive it, and end the call from Android.
-4. If convenient, make one incoming call and confirm **Answer** and **Reject** are
-   visible. Testing either action is sufficient; an incoming call is optional for
-   the first pass.
-
-Stop conditions: stop immediately for feedback/echo, stuck loudspeaker audio,
-failure to end the cellular call, repeated permission prompts, app crash, or any
-effect on emergency/ordinary Android cellular calling.
-
-Report only: whether each state label appeared, focus/layout usability, audio on
-both ends, speaker result, optional DTMF result, teardown result, and any fixed UI
-error text. No private identifiers or message/call content are needed.
+`VERIFIED_HARDWARE`: physical Answer, Decline, active/outgoing End, DTMF,
+touch lockout, proximity blanking, incoming/outgoing UI, two-way intelligible
+audio, teardown, and retained HFP were validated on the API-27 slider phone.
+Live call screens intentionally have no touch call controls.
 
 This checklist contains only tests that require the operator or physical phones.
 No listed feature should be treated as hardware-verified until its result is added
@@ -155,8 +128,8 @@ prevention, sent-folder reflection, and incoming-message notification behavior.
 
 ## Not ready for hardware testing
 
-- Incoming calls through Android Telecom.
 - Native Contacts synchronization; its account and sync boundaries are packaged
   but intentionally refuse activation.
-- Background message notifications (the foreground conversation inbox is ready
-  for the hardware test above).
+
+Background message notifications are software-complete. Their real direct/group
+content and deep-link behavior belong to the next production ANCS session.

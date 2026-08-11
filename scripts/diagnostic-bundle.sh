@@ -15,7 +15,8 @@ git -C "$workspace" status --short >> "$output/version.txt"
     java -version 2>&1 | head -1
 } > "$output/build-environment.txt"
 
-for unit in analogconnectd.service bluetooth.service wireplumber.service pipewire.service; do
+for unit in analogconnectd.service analogconnect-android-keys.service bluetooth.service \
+    wireplumber.service pipewire.service; do
     state=$(systemctl --user is-active "$unit" 2>/dev/null || systemctl is-active "$unit" 2>/dev/null || true)
     printf '%-28s %s\n' "$unit" "${state:-unknown}"
 done > "$output/service-states.txt"
@@ -29,7 +30,9 @@ find "$workspace/vendor/imsg-store/migrations" -maxdepth 1 -type f -printf '%f\n
 cp "$workspace/docs/pending-hardware-tests.md" "$output/pending-hardware-tests.md"
 {
     echo "ANCS protocol consumer: implemented / automated"
-    echo "Production BlueZ bearer: pending hardware integration"
+    echo "Production BlueZ bearer: implemented / hardware coexistence pending"
+    echo "ANCS to MAP correlation: integrated / automated"
+    echo "Android background notifications: implemented / automated"
     echo "Group reply: disabled"
     echo "Diagnostic privacy: no logs, addresses, contacts, messages, tokens, or pairing data"
 } > "$output/feature-evidence.txt"
