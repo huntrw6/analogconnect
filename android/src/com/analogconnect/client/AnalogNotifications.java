@@ -48,17 +48,31 @@ final class AnalogNotifications {
     static void showIncomingCall(Context context, String displayName) {
         createChannels(context);
         Intent open = new Intent(context, CallsActivity.class)
-                .putExtra(CallsActivity.EXTRA_DEMO_CALL_STATE, "incoming")
                 .putExtra(CallsActivity.EXTRA_DISPLAY_NAME, displayName);
+        if (new EnrollmentSettings(context).demoMode()) {
+            open.putExtra(CallsActivity.EXTRA_DEMO_CALL_STATE, "incoming");
+        }
         PendingIntent pending = PendingIntent.getActivity(context, 9001, open,
                 PendingIntent.FLAG_UPDATE_CURRENT);
         Notification notification = new Notification.Builder(context, CALLS)
                 .setSmallIcon(android.R.drawable.sym_call_incoming)
                 .setContentTitle(displayName).setContentText("Incoming call")
-                .setCategory(Notification.CATEGORY_CALL).setOngoing(true)
+                .setCategory(Notification.CATEGORY_CALL)
                 .setPriority(Notification.PRIORITY_HIGH).setFullScreenIntent(pending, true)
                 .setContentIntent(pending).build();
         ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE))
                 .notify(9001, notification);
+    }
+
+    static void openIncomingCallScreen(Context context) {
+        context.startActivity(new Intent(context, CallsActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                        | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+    }
+
+    static void cancelIncomingCall(Context context) {
+        ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE))
+                .cancel(9001);
     }
 }

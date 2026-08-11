@@ -37,7 +37,10 @@ Status updated 2026-08-11 after the physical call-control safety checkpoint.
   produced no call command, and held Power retained the native power menu. HFP
   stayed `slc_ready` after teardown. Physical DTMF was captured but its first
   real press had two possible software paths; the Pi path is now removed and a
-  single-path regression remains pending.
+  repeat produced exactly one caller-heard tone. A persistent Android foreground
+  watcher now surfaces real incoming calls from other screens, and immersive mode
+  removes status/navigation affordances while live. Proximity blanking was also
+  confirmed on the physical phone.
 - `VERIFIED_AUTOMATED`: an explicitly enabled offline demo source exercises
   direct, named group, unnamed group, unread, outgoing failure, ambiguity,
   multiple-sender, contact-search, and empty-search states. It is in-memory and

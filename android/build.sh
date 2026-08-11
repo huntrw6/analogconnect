@@ -50,6 +50,7 @@ javac -d "$test_classes_dir" \
     "$script_dir/src/com/analogconnect/client/ConversationTime.java" \
     "$script_dir/src/com/analogconnect/client/CallController.java" \
     "$script_dir/src/com/analogconnect/client/PhysicalCallKeyDispatcher.java" \
+    "$script_dir/src/com/analogconnect/client/CallMonitorTransition.java" \
     "$script_dir/src/com/analogconnect/client/ContactListItem.java" \
     "$script_dir/src/com/analogconnect/client/ContactController.java" \
     "$script_dir/src/com/analogconnect/client/DemoFixtures.java" \
@@ -70,6 +71,7 @@ javac -d "$test_classes_dir" \
     "$script_dir/test/com/analogconnect/client/ConversationTimeTest.java" \
     "$script_dir/test/com/analogconnect/client/CallControllerTest.java" \
     "$script_dir/test/com/analogconnect/client/PhysicalCallKeyDispatcherTest.java" \
+    "$script_dir/test/com/analogconnect/client/CallMonitorTransitionTest.java" \
     "$script_dir/test/com/analogconnect/client/ContactModelTest.java" \
     "$script_dir/test/com/analogconnect/client/ContactControllerTest.java" \
     "$script_dir/test/com/analogconnect/client/DemoFixturesTest.java" \
@@ -90,6 +92,7 @@ java -cp "$test_classes_dir" com.analogconnect.client.ConversationControllerTest
 java -cp "$test_classes_dir" com.analogconnect.client.ConversationTimeTest
 java -cp "$test_classes_dir" com.analogconnect.client.CallControllerTest
 java -cp "$test_classes_dir" com.analogconnect.client.PhysicalCallKeyDispatcherTest
+java -cp "$test_classes_dir" com.analogconnect.client.CallMonitorTransitionTest
 java -cp "$test_classes_dir" com.analogconnect.client.ContactModelTest
 java -cp "$test_classes_dir" com.analogconnect.client.ContactControllerTest
 java -cp "$test_classes_dir" com.analogconnect.client.DemoFixturesTest

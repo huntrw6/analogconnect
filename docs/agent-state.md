@@ -104,8 +104,10 @@ hardware observation or approved system change is required.
   the companion Pi raw-key service is enabled and persistent.
 - `VERIFIED_HARDWARE`: physical red rejected an incoming call and ended an active
   call, green answered, touch lockout preserved the call, held Power opened the
-  native power menu, and human audio was clear both ways. Physical DTMF requires
-  one repeat after removing its duplicate Pi forwarding path.
+  native power menu, and human audio was clear both ways. After removing duplicate
+  Pi DTMF forwarding, one physical digit produced one caller-heard tone. The
+  foreground watcher, automatic incoming UI, immersive chrome, and proximity
+  blanking are verified on the physical API-27 phone.
 - `VERIFIED_HARDWARE`: the call-screen APK is installed on the Android device with
   app data preserved and a recoverable pre-deployment APK backup.
 - `VERIFIED_HARDWARE`: automatic PBAP contact refresh loaded 438 contacts and 471
