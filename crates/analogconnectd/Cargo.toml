@@ -9,6 +9,7 @@ rust-version.workspace = true
 analogconnect-core = { path = "../analogconnect-core" }
 axum.workspace = true
 axum-server.workspace = true
+bluer.workspace = true
 futures-util.workspace = true
 imsg-config = "0.3.1"
 imsg-keyring = "0.3.1"

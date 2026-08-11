@@ -1,3 +1,4 @@
+pub mod ancs_bluez;
 pub mod ancs_groups;
 pub mod ancs_transport;
 pub mod audio;
@@ -11,10 +12,14 @@ mod process;
 
 use std::{
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use analogconnect_core::{ContactSource, SystemStatus};
+use ancs_groups::{
+    AncsMapCorrelator, CorrelationResult, PendingAncsNotification, PendingMapMessage,
+};
+use ancs_transport::AncsNotificationMetadata;
 use audio::{
     AudioBridge, AudioBridgeSummary, AudioStateBackend, LiveAudioBridge, PipeWireAudioStateBackend,
     PwDumpRunner, ScoNodeError, ScoNodeLocator, ScoTeardownWatchdog,
@@ -51,6 +56,14 @@ use tokio::sync::RwLock;
 
 pub const PROTOCOL_VERSION: u16 = 1;
 
+fn unix_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+        .unwrap_or_default()
+}
+
 #[derive(Clone)]
 pub struct AppState {
     status: Arc<RwLock<SystemStatus>>,
@@ -58,6 +71,8 @@ pub struct AppState {
     contact_store: Arc<ContactStore>,
     message_summary: Arc<RwLock<MessageSyncSummary>>,
     message_sync_coordinator: Option<Arc<MessageSyncCoordinator<ImsgMapBackend>>>,
+    ancs_correlator: Arc<tokio::sync::Mutex<AncsMapCorrelator>>,
+    ancs_seen_map_handles: Arc<tokio::sync::Mutex<std::collections::VecDeque<String>>>,
     audio_bridge: Arc<AudioBridge>,
     auth_tokens: Arc<AuthTokens>,
     message_sender: Arc<dyn MapSendBackend>,
@@ -141,6 +156,10 @@ impl AppState {
             ),
             message_summary: Arc::new(RwLock::new(MessageSyncSummary::default())),
             message_sync_coordinator: None,
+            ancs_correlator: Arc::new(tokio::sync::Mutex::new(AncsMapCorrelator::new(15_000))),
+            ancs_seen_map_handles: Arc::new(tokio::sync::Mutex::new(
+                std::collections::VecDeque::new(),
+            )),
             audio_bridge: Arc::new(
                 AudioBridge::new(64).expect("fixed audio queue capacity is valid"),
             ),
@@ -201,6 +220,107 @@ impl AppState {
                 tokio::time::sleep(Duration::from_secs(30)).await;
             }
         }))
+    }
+
+    /// Starts the production BlueZ ANCS bearer and feeds its metadata into MAP correlation.
+    #[must_use]
+    pub fn start_ancs_task(&self) -> tokio::task::JoinHandle<()> {
+        let state = self.clone();
+        tokio::spawn(async move {
+            let (metadata_tx, mut metadata_rx) = tokio::sync::mpsc::channel(32);
+            let (bearer_state_tx, _bearer_state_rx) =
+                tokio::sync::watch::channel(ancs_bluez::BluezAncsState::Disconnected);
+            let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+            let bearer = tokio::spawn(ancs_bluez::run(metadata_tx, bearer_state_tx, shutdown_rx));
+            while let Some(metadata) = metadata_rx.recv().await {
+                if state.ingest_ancs_metadata(metadata).await.is_err() {
+                    tracing::warn!(
+                        event = "ancs_correlation_failed",
+                        "ANCS event could not be correlated; message remains fail-closed"
+                    );
+                }
+            }
+            bearer.abort();
+        })
+    }
+
+    async fn ingest_ancs_metadata(&self, metadata: AncsNotificationMetadata) -> Result<(), ()> {
+        let observed = unix_millis();
+        let result = self
+            .ancs_correlator
+            .lock()
+            .await
+            .observe_ancs(PendingAncsNotification {
+                notification_uid: metadata.uid,
+                title: metadata.title,
+                subtitle: metadata.subtitle,
+                observed_unix_millis: observed,
+            });
+        if let Some(result) = result {
+            self.apply_ancs_result(result).await?;
+        }
+
+        if let Some(coordinator) = self.message_sync_coordinator.clone() {
+            let elapsed = self.started_at.elapsed();
+            tokio::task::spawn_blocking(move || coordinator.notification(elapsed, "NewMessage"))
+                .await
+                .map_err(|_| ())?
+                .map_err(|_| ())?;
+        }
+        self.correlate_recent_map_messages(observed).await
+    }
+
+    async fn correlate_recent_map_messages(&self, observed: i64) -> Result<(), ()> {
+        let ConversationRepository::Imsg(repository) = &self.conversation_repository else {
+            return Ok(());
+        };
+        let store = repository.store().await.map_err(|_| ())?;
+        let messages = store
+            .list_messages(None, false, None, None, 64, 0)
+            .await
+            .map_err(|_| ())?;
+        for message in messages {
+            if message.direction != imsg_store::Direction::Received
+                || message.synced_at.abs_diff(observed) > 30_000
+            {
+                continue;
+            }
+            let mut seen = self.ancs_seen_map_handles.lock().await;
+            if seen.contains(&message.map_handle) {
+                continue;
+            }
+            seen.push_back(message.map_handle.clone());
+            while seen.len() > 256 {
+                let _ = seen.pop_front();
+            }
+            drop(seen);
+            let display_name = self
+                .contact_store
+                .lookup_display_name(&message.address)
+                .map_err(|_| ())?;
+            let result = self
+                .ancs_correlator
+                .lock()
+                .await
+                .correlate_map(PendingMapMessage {
+                    map_handle: message.map_handle,
+                    sender: message.address,
+                    sender_display_name: display_name,
+                    observed_unix_millis: message.synced_at,
+                });
+            self.apply_ancs_result(result).await?;
+        }
+        Ok(())
+    }
+
+    async fn apply_ancs_result(&self, result: CorrelationResult) -> Result<(), ()> {
+        let ConversationRepository::Imsg(repository) = &self.conversation_repository else {
+            return Ok(());
+        };
+        ancs_groups::apply_correlation(repository.store().await.map_err(|_| ())?, result)
+            .await
+            .map(|_| ())
+            .map_err(|_| ())
     }
 
     pub fn start_contact_sync_task(&self) -> tokio::task::JoinHandle<()> {

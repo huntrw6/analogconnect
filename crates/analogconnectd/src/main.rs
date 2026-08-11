@@ -54,6 +54,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState::new_with_tokens(SystemStatus::default(), auth_tokens);
     let _message_sync_task = state.start_message_sync_task();
     let _contact_sync_task = state.start_contact_sync_task();
+    let _ancs_task = state.start_ancs_task();
     let router = app(state);
 
     match listener_mode {

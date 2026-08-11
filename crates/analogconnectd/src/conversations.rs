@@ -111,7 +111,7 @@ impl ImsgConversationRepository {
         }
     }
 
-    async fn store(&self) -> Result<&Arc<imsg_store::Store>, ConversationError> {
+    pub(crate) async fn store(&self) -> Result<&Arc<imsg_store::Store>, ConversationError> {
         self.store
             .get_or_try_init(|| async {
                 let (path, key) = tokio::task::spawn_blocking(|| {

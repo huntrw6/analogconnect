@@ -330,16 +330,19 @@ bearer token and can perform privacy-safe health and authenticated status checks
   and conflicts. Android accepts those IDs, renders the API title, merges assigned
   senders through the shared conversation key, and cannot enter its private reply
   flow for group or ambiguous rows.
-- `UNKNOWN`: no supervised production ANCS transport currently feeds the daemon
-  correlation boundary. The temporary direct-GATT script remains diagnostic only;
-  end-to-end live ANCS-backed Android threading is not yet integrated or claimed.
+- `VERIFIED_AUTOMATED`: analogconnectd now starts a supervised BlueZ D-Bus/GATT
+  bearer, discovers the ANCS service and three characteristics, subscribes to both
+  sources in order, writes bounded Control Point requests, and feeds metadata into
+  immediate MAP sync plus the encrypted-store correlation boundary. It never
+  disconnects the device, so ANCS retry does not intentionally tear down Classic.
+  The temporary direct-GATT script remains diagnostic only.
 - `VERIFIED_AUTOMATED`: the production ANCS protocol core strictly parses
   Notification Source events, requests AppIdentifier/Title/Subtitle/size/date and
   action labels without requesting Message body, reassembles bounded Data Source
   fragments, serializes one Control Point request at a time, filters non-Messages
   apps, suppresses duplicate/replayed UIDs, bounds queued/completed state, and
-  provides a subscription-ordering/reconnect supervisor with capped backoff. A
-  live BlueZ bearer and daemon task remain unintegrated and hardware-pending.
+  provides a subscription-ordering/reconnect supervisor with capped backoff. Live
+  BlueZ/Classic coexistence and end-to-end delivery remain hardware-pending.
 - `UNKNOWN`: unnamed-group Subtitle stability across different senders and a
   diagnostic restart awaits `ANCS-UNNAMED-GROUP-IDENTITY-001`.
 - `NOT VERIFIED`: group reply targeting remains unavailable and disabled.

@@ -77,16 +77,17 @@ hardware observation or approved system change is required.
   encrypted metadata/sender/assignment/conflict/alias storage, close/reopen
   persistence, bounded fail-closed ANCS↔MAP correlation, stable group API fields,
   and Android title/ID/reply guards pass software tests.
-- `UNKNOWN`: the production daemon has a clean correlation/apply boundary but no
-  supervised live ANCS transport feeding it. The direct-GATT Python probe is not
-  production transport. Unnamed-group stability still needs the planned hardware
-  regression. Group replies remain disabled.
+- `VERIFIED_AUTOMATED`: the production daemon starts a supervised BlueZ GATT ANCS
+  bearer and feeds body-free metadata through immediate MAP sync into the existing
+  correlation/apply boundary. The direct-GATT Python probe remains diagnostic.
+  Live coexistence, unnamed-group stability, and end-to-end delivery remain
+  hardware-pending; group replies remain disabled.
 - `VERIFIED_AUTOMATED`: a transport-independent production ANCS protocol core now
   covers strict Notification Source parsing, body-free attribute requests,
   bounded fragment reassembly, Messages filtering, serialized requests,
   duplicate/replay suppression, bounded queues, ordered subscription supervision,
-  and capped reconnect backoff. The actual BlueZ bearer/daemon adapter is still
-  `UNKNOWN`.
+  and capped reconnect backoff. The BlueZ bearer/daemon adapter is implemented;
+  real iPhone coexistence remains `UNKNOWN`.
 - `BLOCKED`: Accessory Notifications live testing requires iOS 26.5 plus a current
   Mac/Xcode SDK and provisionable Accessory Data Provider, Transport Security,
   and Transport Extension entitlements. This Linux environment has none of that

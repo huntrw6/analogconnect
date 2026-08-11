@@ -502,17 +502,17 @@ localized participant label without observed evidence.
 - `VERIFIED_AUTOMATED`: API and Android support stable `ancs-v1-…` IDs and explicit
   group/ambiguous reply-disabled states. Private conversations retain their
   existing identity and private-send behavior.
-- `UNKNOWN`: a supervised production ANCS listener does not yet feed the daemon
-  boundary. The Python direct-GATT probe is diagnostic only, so live end-to-end
-  Android group threading is not yet claimed.
+- `VERIFIED_AUTOMATED`: a supervised production BlueZ GATT listener now feeds the
+  daemon boundary and triggers MAP synchronization. The Python direct-GATT probe
+  remains diagnostic only; live end-to-end Android group threading is not claimed.
 - `VERIFIED_AUTOMATED`: the reusable ANCS protocol consumer implements strict
   Notification Source decoding, one-at-a-time metadata requests, bounded Data
   Source fragment reassembly, Messages-only filtering, Added/Modified replay
   suppression, bounded UID queues, action-label capture, and reconnect backoff.
   Its transport-neutral supervisor orders both subscriptions, resets partial state
   on disconnect, and schedules bounded retries. It never requests the Message-body
-  attribute. The remaining production gap is the live BlueZ GATT bearer and daemon
-  task that feeds this core.
+  attribute. The BlueZ bearer and daemon task now feed this core; real iPhone
+  coexistence and notification delivery remain hardware-pending.
 - `NOT VERIFIED`: group reply targeting.
 
 Future rename test: `ANCS-GROUP-RENAME-001`. A renamed group is expected to hash
