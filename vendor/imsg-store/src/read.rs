@@ -208,7 +208,11 @@ impl Store {
                              ORDER BY m2.timestamp_ms DESC, m2.rowid DESC LIMIT 1), \
                             g.display_subtitle, \
                             CASE WHEN g.group_id IS NULL THEN 0 ELSE 1 END AS is_ancs_group, \
-                            COALESCE(g.identity_conflict, 0) AS identity_conflict \
+                            CASE WHEN COALESCE(g.identity_conflict, 0) = 1 OR EXISTS (\
+                              SELECT 1 FROM messages am JOIN ancs_ambiguous_messages aa \
+                                ON aa.map_handle = am.map_handle \
+                              WHERE am.conversation_key = m.conversation_key\
+                            ) THEN 1 ELSE 0 END AS identity_conflict \
                      FROM messages m \
                      LEFT JOIN ancs_group_conversations g \
                        ON g.group_id = m.conversation_key \

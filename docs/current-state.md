@@ -329,6 +329,10 @@ bearer token and can perform privacy-safe health and authenticated status checks
   Title to the resolved MAP sender plus a bounded time window, handles duplicate
   UIDs and out-of-order arrival, rejects stale/competing candidates as ambiguous,
   and atomically applies only proven groups to the encrypted store.
+- `VERIFIED_AUTOMATED`: no-match correlation remains pending inside the bounded
+  window, while genuinely competing evidence is persisted as a fail-closed
+  per-message ambiguity marker. Conversation APIs disable reply until unique
+  direct or group evidence clears that marker, including across daemon restart.
 - `VERIFIED_AUTOMATED`: API v2 exposes exact stable `ancs-v1-…` IDs, ANCS Subtitle
   titles, explicit private/group/ambiguous kind, and disabled reply state for groups
   and conflicts. Android accepts those IDs, renders the API title, merges assigned

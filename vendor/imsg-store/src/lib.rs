@@ -136,6 +136,13 @@ mod tests {
         store
             .upsert(message("synthetic-b", "sender-b", "sender-b", STATUS_READ))
             .await?;
+        store.mark_ancs_ambiguous("synthetic-a", 9).await?;
+        assert!(store
+            .threads()
+            .await?
+            .iter()
+            .any(|thread| thread.identity_conflict));
+        store.clear_ancs_ambiguous("synthetic-a").await?;
         let group_id = format!("ancs-v1-{}", "a".repeat(64));
         for (handle, sender, uid) in [
             ("synthetic-a", "sender-a", [1, 0, 0, 0]),

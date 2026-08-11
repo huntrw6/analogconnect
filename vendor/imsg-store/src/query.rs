@@ -6,6 +6,42 @@ use crate::{
 };
 
 impl Store {
+    /// Marks a received MAP message as unsafe for private reply after competing ANCS evidence.
+    pub async fn mark_ancs_ambiguous(
+        &self,
+        map_handle: &str,
+        observed_at: i64,
+    ) -> Result<(), Error> {
+        let map_handle = map_handle.to_owned();
+        self.conn()
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO ancs_ambiguous_messages (map_handle, observed_at) \
+                     VALUES (?1, ?2) ON CONFLICT(map_handle) DO UPDATE SET \
+                     observed_at = MAX(observed_at, excluded.observed_at)",
+                    params![map_handle, observed_at],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(Error::Connection)
+    }
+
+    /// Clears a prior fail-closed marker after unique ANCS evidence resolves the message.
+    pub async fn clear_ancs_ambiguous(&self, map_handle: &str) -> Result<(), Error> {
+        let map_handle = map_handle.to_owned();
+        self.conn()
+            .call(move |conn| {
+                conn.execute(
+                    "DELETE FROM ancs_ambiguous_messages WHERE map_handle = ?1",
+                    [map_handle],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(Error::Connection)
+    }
+
     /// Assigns an existing MAP message to a durable ANCS Subtitle group.
     ///
     /// The group metadata, observed sender, notification UID, and message conversation key are
@@ -81,6 +117,10 @@ impl Store {
                 tx.execute(
                     "UPDATE messages SET conversation_key = ?1 WHERE map_handle = ?2",
                     params![group_id, map_handle],
+                )?;
+                tx.execute(
+                    "DELETE FROM ancs_ambiguous_messages WHERE map_handle = ?1",
+                    [map_handle],
                 )?;
                 tx.commit()?;
                 Ok(GroupAssignmentResult::Assigned)

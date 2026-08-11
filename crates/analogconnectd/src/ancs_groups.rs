@@ -71,7 +71,11 @@ pub enum CorrelationResult {
         map_handle: String,
         notification_uid: [u8; 4],
     },
-    Ambiguous,
+    Pending,
+    Ambiguous {
+        map_handles: Vec<String>,
+        observed_unix_millis: i64,
+    },
 }
 
 /// Bounded in-memory ANCS/MAP correlation window that fails closed.
@@ -98,6 +102,7 @@ impl AncsMapCorrelator {
         &mut self,
         notification: PendingAncsNotification,
     ) -> Option<CorrelationResult> {
+        let observed_unix_millis = notification.observed_unix_millis;
         if self.completed_uids.contains(&notification.notification_uid) {
             return None;
         }
@@ -125,11 +130,20 @@ impl AncsMapCorrelator {
         while self.notifications.len() > 32 {
             let _ = self.notifications.pop_front();
         }
-        (candidates.len() > 1).then_some(CorrelationResult::Ambiguous)
+        (candidates.len() > 1).then(|| CorrelationResult::Ambiguous {
+            map_handles: candidates
+                .into_iter()
+                .filter_map(|index| self.messages.get(index))
+                .map(|message| message.map_handle.clone())
+                .collect(),
+            observed_unix_millis,
+        })
     }
 
     #[must_use]
     pub fn correlate_map(&mut self, message: PendingMapMessage) -> CorrelationResult {
+        let map_handle = message.map_handle.clone();
+        let observed_unix_millis = message.observed_unix_millis;
         let candidates = self
             .notifications
             .iter()
@@ -149,10 +163,17 @@ impl AncsMapCorrelator {
                     let _ = self.messages.pop_front();
                 }
             }
-            return CorrelationResult::Ambiguous;
+            return if candidates.is_empty() {
+                CorrelationResult::Pending
+            } else {
+                CorrelationResult::Ambiguous {
+                    map_handles: vec![map_handle],
+                    observed_unix_millis,
+                }
+            };
         };
         let Some(notification) = self.notifications.remove(*index) else {
-            return CorrelationResult::Ambiguous;
+            return CorrelationResult::Pending;
         };
         self.remember_completed(notification.notification_uid);
         correlate_pair(notification, message)
@@ -231,10 +252,22 @@ pub async fn apply_correlation(
                 sender,
                 observed_unix_millis,
             ),
-            CorrelationResult::DirectCandidate { .. } => {
+            CorrelationResult::DirectCandidate { map_handle, .. } => {
+                store.clear_ancs_ambiguous(&map_handle).await?;
                 return Ok(ApplyCorrelationResult::DirectCandidate);
             }
-            CorrelationResult::Ambiguous => return Ok(ApplyCorrelationResult::Ambiguous),
+            CorrelationResult::Pending => return Ok(ApplyCorrelationResult::Ambiguous),
+            CorrelationResult::Ambiguous {
+                map_handles,
+                observed_unix_millis,
+            } => {
+                for map_handle in map_handles {
+                    store
+                        .mark_ancs_ambiguous(&map_handle, observed_unix_millis)
+                        .await?;
+                }
+                return Ok(ApplyCorrelationResult::Ambiguous);
+            }
         };
     match store
         .assign_ancs_group(
@@ -325,7 +358,7 @@ mod tests {
                 sender_display_name: None,
                 observed_unix_millis: 11,
             }),
-            CorrelationResult::Ambiguous
+            CorrelationResult::Pending
         );
     }
 
@@ -359,15 +392,15 @@ mod tests {
                 observed_unix_millis: 100,
             });
         }
-        assert_eq!(
+        assert!(matches!(
             burst.correlate_map(PendingMapMessage {
                 map_handle: "handle".to_owned(),
                 sender: "sender".to_owned(),
                 sender_display_name: Some("Person".to_owned()),
                 observed_unix_millis: 101,
             }),
-            CorrelationResult::Ambiguous
-        );
+            CorrelationResult::Ambiguous { .. }
+        ));
     }
 
     #[test]
@@ -380,7 +413,7 @@ mod tests {
                 sender_display_name: Some("Person".to_owned()),
                 observed_unix_millis: 10_000,
             }),
-            CorrelationResult::Ambiguous
+            CorrelationResult::Pending
         );
         assert!(matches!(
             resolver.observe_ancs(PendingAncsNotification {
@@ -406,7 +439,7 @@ mod tests {
                 sender_display_name: Some("Person".to_owned()),
                 observed_unix_millis: 5_000,
             }),
-            CorrelationResult::Ambiguous
+            CorrelationResult::Pending
         );
     }
 
@@ -456,9 +489,21 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("synthetic ANCS thread missing"))?;
         assert_eq!(thread.conversation_key, group_id);
         assert_eq!(
-            apply_correlation(&store, CorrelationResult::Ambiguous).await?,
+            apply_correlation(&store, CorrelationResult::Pending).await?,
             ApplyCorrelationResult::Ambiguous
         );
+        assert_eq!(
+            apply_correlation(
+                &store,
+                CorrelationResult::Ambiguous {
+                    map_handles: vec!["synthetic-handle".to_owned()],
+                    observed_unix_millis: 103,
+                },
+            )
+            .await?,
+            ApplyCorrelationResult::Ambiguous
+        );
+        assert!(store.threads().await?[0].identity_conflict);
         assert_eq!(
             apply_correlation(
                 &store,
@@ -470,6 +515,7 @@ mod tests {
             .await?,
             ApplyCorrelationResult::DirectCandidate
         );
+        assert!(!store.threads().await?[0].identity_conflict);
         Ok(())
     }
 }
