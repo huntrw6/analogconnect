@@ -1,4 +1,7 @@
-# AnalogConnect
+<h1>
+  <img src="https://cdn.phototourl.com/free/2026-08-12-5009f1e5-01d1-4dce-8f17-e987f733cc49.png" width="48" align="absmiddle">
+  AnalogConnect
+</h1>
 
 AnalogConnect turns an Android 8.1 slider phone into a local companion for a
 nearby iPhone. The iPhone remains the cellular device; a Raspberry Pi bridges
