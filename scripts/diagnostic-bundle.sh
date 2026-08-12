@@ -21,8 +21,12 @@ for unit in analogconnectd.service analogconnect-android-keys.service bluetooth.
     printf '%-28s %s\n' "$unit" "${state:-unknown}"
 done > "$output/service-states.txt"
 
-health_code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-    --max-time 2 http://127.0.0.1:8787/api/v1/health || true)
+health_code=$(curl --insecure --silent --output /dev/null --write-out '%{http_code}' \
+    --max-time 2 https://127.0.0.1:8787/api/v1/health || true)
+if [[ $health_code != 200 ]]; then
+    health_code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+        --max-time 2 http://127.0.0.1:8787/api/v1/health || true)
+fi
 printf 'api_health_http=%s\n' "${health_code:-unavailable}" > "$output/api-health.txt"
 
 find "$workspace/vendor/imsg-store/migrations" -maxdepth 1 -type f -printf '%f\n' \
