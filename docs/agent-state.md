@@ -128,8 +128,9 @@ Completed the first Android product-shell conversion on top of persistent ANCS
 group identity: familiar top-level navigation, conversation rows and bubbles,
 private compose, fail-closed group/ambiguous states, dial pad and call-state UI,
 contacts/settings, preserved Developer Tools, and isolated in-memory fixtures.
-The API-27 unit suite and signed APK build pass. Live transport into the ANCS
-boundary is explicitly not integrated and group reply remains closed.
+The API-27 unit suite and signed APK build pass. Production BlueZ transport now
+feeds the ANCS boundary; real iPhone coexistence remains pending and group reply
+remains closed.
 
 Subsequent unattended product hardening added physical-device layout correction,
 message previews, fixed navigation/composer behavior, onboarding, explicit dark
@@ -139,16 +140,15 @@ Tools, sanitized diagnostics, and build/install/validation scripts.
 
 ## Next autonomous actions
 
-1. Validate the physical Call/End keys and proximity behavior on a controlled call.
-2. Add a supervised production ANCS transport that can coexist with MAP and feed
-   the tested correlation boundary; do not use the diagnostic script as transport.
+1. Run the controlled production ANCS coexistence and direct/group receive matrix.
+2. Confirm Android background notification content and deep links with real data.
 3. Add persisted call-recents data only after the backend has a truthful source.
 
 ## Next operator gate
 
-Operator testing is required for actual Call/End delivery, proximity blanking,
-real incoming/outgoing transitions, audio, and teardown. Call screens expose no
-touch commands while live.
+Call/End delivery, proximity blanking, incoming/outgoing transitions, audio, and
+teardown are `VERIFIED_HARDWARE`. Operator testing is now required for production
+ANCS coexistence and real message delivery only.
 
 ## Authoritative references
 
