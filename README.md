@@ -1,36 +1,94 @@
-# AnalogBridge
+# AnalogConnect
 
-A Pi bridge that lets an Android 8 device act as a companion phone.
+AnalogConnect turns an Android 8.1 slider phone into a local companion for a
+nearby iPhone. The iPhone remains the cellular device; a Raspberry Pi bridges
+messages, contacts, calls, and call audio to a familiar Android interface.
 
-The iPhone remains the cellular phone. A Raspberry Pi connects it to an Android
-8.1 phone over Bluetooth and secure local Wi-Fi.
+```text
+iPhone
+  ├─ MAP  → message history and direct sending
+  ├─ ANCS → notification context and group identity
+  ├─ PBAP → contacts
+  └─ HFP  → call control and two-way audio
+             ↓
+       Raspberry Pi / analogconnectd
+             ↓ authenticated local API
+       Android 8.1 (API 27)
+```
 
-## Current capabilities
+## Features and status
 
-- Connects a Raspberry Pi to an iPhone for contacts, messages, calls, and call audio.
-- Lets the Android phone send a message through the iPhone.
-- Shows iPhone call state and provides answer, reject, hang-up, dial, DTMF, and mute controls.
-- Carries live microphone and call audio in both directions.
-- Supports earpiece and speakerphone playback on Android.
-- Automatically discovers the Pi again when its local network address changes.
-- Protects Pi-to-Android traffic with HTTPS certificate pinning and authentication.
-- Keeps credentials, message contents, contact details, phone numbers, and audio out of logs.
+### Messaging
 
-Real-device testing has verified call controls, clear two-way call audio,
-speakerphone routing, automatic Pi address rediscovery, and outbound message
-delivery. A read-only service-sandbox regression that temporarily broke messaging
-has been corrected with narrowly scoped imsg writable paths and hardware-verified.
-See
-[`docs/current-state.md`](docs/current-state.md) for detailed evidence and remaining work.
+- Conversation list, searchable direct and group threads, message bubbles,
+  unread state, direct composition, Android notifications, and deep links.
+- MAP provides history, incoming messages, and private outbound sending.
+- ANCS provides privacy-safe incoming context. A named group's Subtitle becomes
+  its title; an unnamed group's participant-generated Subtitle is retained as
+  its title. Normalized Subtitles produce stable `ancs-v1-*` conversation IDs.
+- Different senders correlated to the same group remain in one thread. Competing
+  evidence is persisted as ambiguous and fails closed.
+- Group replies remain disabled because exact group-reply targeting has not been
+  verified on hardware.
 
-The path from the current engineering UI to the finished call, conversation,
-contacts, notification, recovery, and release experience is tracked in
-[`docs/product-roadmap.md`](docs/product-roadmap.md).
+The ANCS protocol consumer, supervised production BlueZ GATT bearer, reconnect
+logic, and ANCS/MAP correlation pipeline are `VERIFIED_AUTOMATED`. Live ANCS
+coexistence with MAP, PBAP, and HFP is hardware verification pending.
 
-## Backend development
+### Calls
 
-Set a private token of at least 32 bytes, then run the daemon on its loopback-only
-default address. Never commit the token or place it in shared shell history.
+HFP calling and bidirectional audio are `VERIFIED_HARDWARE`, including incoming
+and outgoing calls, physical Answer, Decline, active-call End, physical DTMF,
+proximity screen blanking, clean teardown, and intelligible audio both ways.
+Live call screens deliberately expose no touch-activated call controls, reducing
+accidental cheek input. The green Call and red End/Power hardware buttons retain
+their conventional roles; holding Power still reaches native power behavior.
+
+### Android application
+
+The API-27 app provides Messages, Calls, Contacts, and Settings, plus onboarding,
+light/dark themes, connection recovery, an Android-Keystore-protected offline
+cache, notification channels, and Developer Tools. Synthetic/demo data is
+isolated from production persistence. The Pi remains authoritative for sends and
+live call state.
+
+### Privacy and security
+
+AnalogConnect is local-first: no cloud service, iPhone companion app, Mac, or
+CarPlay integration is required. Message storage is encrypted, Android cache data
+uses AES-GCM with Android Keystore keys, API mutations are authenticated, and LAN
+operation uses TLS certificate pinning. Diagnostics redact phone numbers,
+Bluetooth addresses, message bodies, credentials, tokens, and pairing material.
+
+## Supported environment
+
+- Raspberry Pi running Linux, BlueZ, PipeWire/WirePlumber, Rust, and `imsg`
+- Paired/trusted iPhone providing MAP, ANCS, PBAP, and HFP
+- Android 8.1 / API 27 companion phone; the physical-key integration targets the
+  validated slider handset and may need adaptation for different hardware keys
+
+## Build and run
+
+The repository's service setup expects a configured `imsg` installation,
+Bluetooth trust, private daemon environment file, TLS material for LAN use, and
+Android enrollment. See the deployment and security documentation before using
+real devices.
+
+```bash
+# Complete release validation (Rust, vendor crates, Android, signing, schemas,
+# Python, and shell checks)
+scripts/validate.sh
+
+# Build the daemon and signed debug APK
+cargo build --release -p analogconnectd --bin analogconnectd
+android/build.sh
+
+# Upgrade one connected Android device without clearing app data
+scripts/install-android.sh
+```
+
+For loopback-only backend development, provide a private token of at least 32
+bytes without committing it or placing it in shared shell history:
 
 ```bash
 read -rsp "AnalogConnect API token: " ANALOGCONNECT_API_TOKEN
@@ -38,23 +96,30 @@ export ANALOGCONNECT_API_TOKEN
 cargo run -p analogconnectd
 ```
 
-Then query:
+## Current limitations
 
-```bash
-curl http://127.0.0.1:8787/api/v1/health
-curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/status
-curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/contacts/summary
-curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/messages/summary
-curl -H "Authorization: Bearer $ANALOGCONNECT_API_TOKEN" http://127.0.0.1:8787/api/v1/audio/summary
-```
+- Production BlueZ ANCS integration is implemented but awaits live coexistence
+  and end-to-end iPhone validation.
+- Group reply and ANCS positive-action invocation are disabled pending exact-target
+  hardware proof.
+- Unnamed-group reconnect stability, same-name collisions, and rename behavior
+  still require controlled iPhone tests.
+- Recents does not claim historical iPhone call logs; truthful observed-call
+  attribution remains incomplete.
 
-The daemon includes a privacy-safe `imsg` PBAP adapter, SQLite contact store, and
-automatic polling synchronization for the MAP inbox and sent folders. Contact
-records are not yet exposed through the API. Every endpoint except health requires constant-time bearer
-authentication. Plaintext remains loopback-only. See
-[`docs/control-plane-security.md`](docs/control-plane-security.md) for the explicit
-HTTPS configuration required before binding to a LAN address.
+## Documentation
+
+- [Current evidence and status](docs/current-state.md)
+- [Product roadmap](docs/product-roadmap.md)
+- [Production ANCS transport](docs/ancs-production-transport.md)
+- [Group detection and identity](docs/group-chat-detection-report.md)
+- [Android product UI](docs/android-product-ui.md)
+- [Physical call controls](docs/physical-call-controls.md)
+- [Daemon deployment](docs/daemon-service.md)
+- [Control-plane security](docs/control-plane-security.md)
+- [Developer diagnostics](docs/developer-diagnostics.md)
+- [Pending hardware tests](docs/pending-hardware-tests.md)
 
 ## License
 
-GNU General Public License v3.0. See [`LICENSE`](LICENSE).
+GNU General Public License v3.0. See [LICENSE](LICENSE).
