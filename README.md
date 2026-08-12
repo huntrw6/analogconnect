@@ -1,4 +1,7 @@
-# AnalogBridge
+<h1>
+  <img src="https://cdn.phototourl.com/free/2026-08-12-5009f1e5-01d1-4dce-8f17-e987f733cc49.png" width="48" align="absmiddle">
+  AnalogBridge
+</h1>
 
 A Pi bridge that lets an Android 8 device act as a companion phone.
 
