@@ -38,6 +38,12 @@ systemctl --user enable --now analogconnectd.service
 scripts/boot-readiness.sh
 ```
 
+The repository may contain a newer validated binary than the installed service.
+Before replacing `~/.local/bin/analogconnectd` or restarting the unit, follow the
+`AGENTS.md` system-change approval gate: present the exact copy/restart commands,
+purpose, expected result, risk, and rollback procedure. A normal Pi reboot uses
+the already-installed binary and preserves the Android app/cache configuration.
+
 - `DOCUMENTED`: systemd `Restart=on-failure` excludes clean exits and explicit
   service stops.
 - `VERIFIED_AUTOMATED`: the installed daemon, Bluetooth, PipeWire, WirePlumber,

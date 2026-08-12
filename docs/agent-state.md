@@ -6,9 +6,8 @@ Milestone 7 — Integrated Android companion product
 
 ## Current objective
 
-Restore reliable outbound messaging, retain the hardware-verified call/audio
-vertical slice, and execute `docs/product-roadmap.md` until an operator-only
-hardware observation or approved system change is required.
+Validate and deploy the production BlueZ ANCS pipeline while preserving reliable
+messaging and the hardware-verified call/audio vertical slice.
 
 ## Current classification
 
@@ -149,6 +148,29 @@ Tools, sanitized diagnostics, and build/install/validation scripts.
 Call/End delivery, proximity blanking, incoming/outgoing transitions, audio, and
 teardown are `VERIFIED_HARDWARE`. Operator testing is now required for production
 ANCS coexistence and real message delivery only.
+
+## Restart handoff
+
+- Git `main` is clean, matches `origin/main`, and was last pushed at merge commit
+  `a1e563d` (README release overview included).
+- `scripts/validate.sh` passed after the final README update. The latest signed
+  API-27 APK is installed without clearing Android app data, and the app launched
+  normally.
+- Pi boot readiness passed: Bluetooth, PipeWire, WirePlumber, Avahi,
+  `analogconnectd.service`, and `analogconnect-android-keys.service` were active;
+  user lingering and the daemon's private TLS environment were configured.
+- The new release daemon binary exists at `target/release/analogconnectd`, but it
+  was deliberately **not copied over the installed service binary or restarted**.
+  The repository approval gate requires explicit approval before changing a
+  system service. A Pi reboot will therefore restart the previously installed,
+  known-working daemon; it will not activate the new production ANCS bearer.
+- Before the first production ANCS hardware test, install the validated release
+  binary using the procedure in `docs/daemon-service.md`, restart the user service,
+  confirm `/api/v1/health`, and then follow `docs/pending-hardware-tests.md` one
+  operator action at a time. Do not use `scripts/ancs-gatt-probe.py` as production
+  transport and do not invoke an ANCS action without explicit approval.
+- External recovery metadata is stored in
+  `/home/operat/Documents/AnalogConnect-recovery/`; it is not part of Git.
 
 ## Authoritative references
 
